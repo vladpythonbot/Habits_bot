@@ -210,7 +210,7 @@ async def my_habits(message: types.Message):
     text = "📋 <b>Твои привычки:</b>\n\n"
 
     for habit in habits:
-        habit_id, habit_name, streak, total, last_date = habit
+        habit_id, habit_name,start_date, streak, total, last_date = habit
         text += f"• {habit_name} — 🔥 {streak} дней подряд\n"
 
         await message.answer(text, parse_mode="HTML")
@@ -244,7 +244,7 @@ async def statistics(message: types.Message):
         text += f" Цепочка: <b>{streak}</b> дней 🔥\n"
         text += f" Дата начала: {start_date}"
         text += f" Выполнено: {total_completed} раз ({percent}%)\n\n"
-
+#Сделать чтобы можно было выбирать цель 10 дней/месяц/и т.д
     await message.answer(text, parse_mode="HTML")
 
 
