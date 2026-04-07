@@ -48,7 +48,7 @@ async def start(message: types.Message, state: FSMContext):
     await message.answer(
         f"Привет, {message.from_user.first_name}!\n\n"
         f"Я помогу тебе формировать полезные привычки.",
-        reply_markup=empty_keyboard
+        reply_markup=main_keyboard,
     )
 
 
@@ -158,7 +158,7 @@ async def mark_today(message: types.Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
 
     for habit in habits:
-        habit_id, habit_name, streak, total, last_date = habit
+        habit_id, habit_name,start_date, streak, total, last_date = habit
         button_text = f"{habit_name} ({streak} 🔥)"
 
         keyboard.inline_keyboard.append([
@@ -237,7 +237,7 @@ async def statistics(message: types.Message):
     )
 
     for habit in habits:
-        habit_id, habit_name, streak, total_completed, last_date,start_date = habit
+        habit_id, habit_name, start_date, streak, total_completed, last_date = habit
         percent = round((total_completed / 30) * 100) if total_completed > 0 else 0
 
         text += f"{habit_name}\n"
