@@ -79,15 +79,6 @@ async def new_habit_save(message: types.Message, state: FSMContext):
     )
     await state.set_state(Form.waiting_start_date)
 
-    await message.answer(
-        f"✅ Привычка успешно добавлена!\n\n"
-        f"Название: <b>{habit_name}</b>",
-        parse_mode="HTML",
-        reply_markup=main_keyboard
-    )
-
-    logger.info(f"Пользователь {message.from_user.id} добавил привычку")
-    await state.clear()
 
 
 @router.message(Form.waiting_start_date)
@@ -105,7 +96,7 @@ async def new_habit_start_date(message: types.Message, state: FSMContext):
         except ValueError:
             await message.answer("Неправильний формат даты!\nИспользуй формат `ГГГГ-ММ-ДД` или напиши `сегодня`.")
             return
-
+    await state.set_state(start_date)
     await save_habit(message.from_user.id, habit_name, start_date)
 
     await message.answer(
