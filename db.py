@@ -24,16 +24,19 @@ async def init_db():
         await db.commit()
 
 
-async def save_habit(user_id: int, habit_name: str, start_date: str=None):
+async def save_habit(user_id: int, habit_name: str, start_date: str = None):
+    if start_date is None:
+        start_date = datetime.now().strftime("%Y-%m-%d")
+
     created_date = datetime.now().strftime("%Y-%m-%d")
 
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
-            INSERT INTO habits (user_id, habit_name,start_date created_date, last_completed_date, streak, total_completed)
-            VALUES (?, ?, ?,?  NULL, 0, 0)
-        """, (user_id, habit_name, created_date))
+            INSERT INTO habits 
+            (user_id, habit_name, start_date, created_date, last_completed_date, streak, total_completed)
+            VALUES (?, ?, ?, ?, NULL, 0, 0)
+        """, (user_id, habit_name, start_date, created_date))
         await db.commit()
-
 
 async def get_user_habits(user_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
