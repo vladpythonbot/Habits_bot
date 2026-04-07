@@ -29,8 +29,8 @@ async def save_habit(user_id: int, habit_name: str, start_date: str=None):
 
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
-            INSERT INTO habits (user_id, habit_name, created_date, last_completed_date, streak, total_completed)
-            VALUES (?, ?, ?, NULL, 0, 0)
+            INSERT INTO habits (user_id, habit_name,start_date created_date, last_completed_date, streak, total_completed)
+            VALUES (?, ?, ?,?  NULL, 0, 0)
         """, (user_id, habit_name, created_date))
         await db.commit()
 
