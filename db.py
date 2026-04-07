@@ -13,6 +13,7 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 habit_name TEXT NOT NULL,
+                start_date TEXT NOT NULL,
                 created_date TEXT NOT NULL,
                 last_completed_date TEXT,
                 streak INTEGER DEFAULT 0,
@@ -23,7 +24,7 @@ async def init_db():
         await db.commit()
 
 
-async def save_habit(user_id: int, habit_name: str):
+async def save_habit(user_id: int, habit_name: str, start_date: str=None):
     created_date = datetime.now().strftime("%Y-%m-%d")
 
     async with aiosqlite.connect(DB_NAME) as db:

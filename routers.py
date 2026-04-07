@@ -7,7 +7,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from bot import bot
+
 from db import save_habit, get_user_habits, mark_habit_completed,delete_habit_from_db,reset_habit_streak
 
 router = Router()
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 class Form(StatesGroup):
     waiting_habit_name = State()
+    waiting_start_date = State()
 
 
 main_keyboard = ReplyKeyboardMarkup(
@@ -64,12 +65,19 @@ async def new_habit_start(message: types.Message, state: FSMContext):
 @router.message(Form.waiting_habit_name)
 async def new_habit_save(message: types.Message, state: FSMContext):
     habit_name = message.text.strip()
-
+    today=datetime.today().strftime("%Y-%m-%d")
     if len(habit_name) < 2:
         await message.answer("Название привычки слишком короткое. Попробуй ещё раз.")
         return
 
-    await save_habit(message.from_user.id, habit_name)
+    await state.update_data(habit_name=habit_name)
+    await message.answer(
+        "Напиши дату начала привычки в формате 'ГГГГ-ММ-ДД'\n"
+        f"Например {today}\n\n"
+        "Или напиши 'сегодня', если начала сегодня",
+        parse_mode="Markdown"
+    )
+    await state.set_state(Form.waiting_start_date)
 
     await message.answer(
         f"✅ Привычка успешно добавлена!\n\n"
@@ -81,6 +89,34 @@ async def new_habit_save(message: types.Message, state: FSMContext):
     logger.info(f"Пользователь {message.from_user.id} добавил привычку")
     await state.clear()
 
+
+@router.message(Form.waiting_start_date)
+async def new_habit_start_date(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    habit_name = data.get("habit_name")
+
+    if message.text.lower() == "сегодня":
+        start_date = datetime.now().strftime("%Y-%m-%d")
+    else:
+
+        try:
+            datetime.strptime(message.text.strip(), "%Y-%m-%d")
+            start_date = message.text.strip()
+        except ValueError:
+            await message.answer("Неправильний формат даты!\nИспользуй формат `ГГГГ-ММ-ДД` или напиши `сегодня`.")
+            return
+
+    await save_habit(message.from_user.id, habit_name, start_date)
+
+    await message.answer(
+        f"✅ Привычка успешна добавлена!\n\n"
+        f"Название: <b>{habit_name}</b>\n"
+        f"Дата начала: <b>{start_date}</b>",
+        parse_mode="HTML",
+        reply_markup=main_keyboard
+    )
+
+    await state.clear()
 
 @router.message(F.text == "🔄 Обнулить цепочку")
 async def reset_streak_start(message: types.Message):
@@ -210,12 +246,13 @@ async def statistics(message: types.Message):
     )
 
     for habit in habits:
-        habit_id, habit_name, streak, total_completed, last_date = habit
+        habit_id, habit_name, streak, total_completed, last_date,start_date = habit
         percent = round((total_completed / 30) * 100) if total_completed > 0 else 0
 
-        text += f"• {habit_name}\n"
-        text += f"   Цепочка: <b>{streak}</b> дней 🔥\n"
-        text += f"   Выполнено: {total_completed} раз ({percent}%)\n\n"
+        text += f"{habit_name}\n"
+        text += f" Цепочка: <b>{streak}</b> дней 🔥\n"
+        text += f" Дата начала: {start_date}"
+        text += f" Выполнено: {total_completed} раз ({percent}%)\n\n"
 
     await message.answer(text, parse_mode="HTML")
 
