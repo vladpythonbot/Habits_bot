@@ -1,5 +1,7 @@
+
 import logging
 from datetime import datetime
+
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -7,8 +9,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-
-from db import save_habit, get_user_habits, mark_habit_completed,delete_habit_from_db,reset_habit_streak
+from db import save_habit, get_user_habits, mark_habit_completed, delete_habit_from_db, reset_habit_streak
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class Form(StatesGroup):
     waiting_habit_name = State()
-    waiting_start_date = State()
+    waiting_goal_days = State()
 
 
 main_keyboard = ReplyKeyboardMarkup(
@@ -35,140 +36,106 @@ main_keyboard = ReplyKeyboardMarkup(
 empty_keyboard = ReplyKeyboardMarkup(
     keyboard=[[KeyboardButton(text="🌟 Добавить привычку")]],
     resize_keyboard=True,
-    one_time_keyboard=True
+    one_time_keyboard=False
 )
 
-
-
 @router.message(Command("start"))
-async def start(message: types.Message, state: FSMContext):
+async def start(message: types.Message):
     habits = await get_user_habits(message.from_user.id)
     keyboard = main_keyboard if habits else empty_keyboard
 
     await message.answer(
         f"Привет, {message.from_user.first_name}!\n\n"
         f"Я помогу тебе формировать полезные привычки.",
-        reply_markup=main_keyboard,
+        reply_markup=keyboard
     )
 
 
 @router.message(F.text == "🌟 Добавить привычку")
 async def new_habit_start(message: types.Message, state: FSMContext):
     await message.answer(
-        "Напиши название новой привычки:\n"
-        "Например: Пить 2 литра воды, Читать 20 минут, Делать зарядку",reply_markup=ReplyKeyboardRemove()
+        "Напиши название новой привычки:",
+        reply_markup=ReplyKeyboardRemove()
     )
     await state.set_state(Form.waiting_habit_name)
-
 
 
 @router.message(Form.waiting_habit_name)
 async def new_habit_save(message: types.Message, state: FSMContext):
     habit_name = message.text.strip()
-    today=datetime.today().strftime("%Y-%m-%d")
+
     if len(habit_name) < 2:
-        await message.answer("Название привычки слишком короткое. Попробуй ещё раз.")
+        await message.answer("Название привычки слишком короткое. Минимум 2 символа.")
         return
 
     await state.update_data(habit_name=habit_name)
+
+
+    goal_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="7 дней", callback_data="goal_7")],
+        [InlineKeyboardButton(text="14 дней", callback_data="goal_14")],
+        [InlineKeyboardButton(text="21 день", callback_data="goal_21")],
+        [InlineKeyboardButton(text="30 дней", callback_data="goal_30")],
+        [InlineKeyboardButton(text="60 дней", callback_data="goal_60")],
+        [InlineKeyboardButton(text="100 дней", callback_data="goal_100")],
+        [InlineKeyboardButton(text="Своя цель", callback_data="goal_custom")]
+    ])
+
     await message.answer(
-        "Напиши дату начала привычки в формате 'ГГГГ-ММ-ДД'\n"
-        f"Например {today}\n\n"
-        "Или напиши 'сегодня', если начала сегодня",
-        parse_mode="Markdown"
+        f"Привычка: <b>{habit_name}</b>\n\n"
+        "Выбери цель — сколько дней подряд хочешь держать привычку:",
+        parse_mode="HTML",
+        reply_markup=goal_kb
     )
-    await state.set_state(Form.waiting_start_date)
+
+    await state.set_state(Form.waiting_goal_days)
 
 
-
-@router.message(Form.waiting_start_date)
-async def new_habit_start_date(message: types.Message, state: FSMContext):
+@router.callback_query(F.data.startswith("goal_"))
+async def process_goal(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     habit_name = data.get("habit_name")
 
-    if message.text.lower() == "сегодня":
-        start_date = datetime.now().strftime("%Y-%m-%d")
-    else:
+    if callback.data == "goal_custom":
+        await callback.message.edit_text("Напиши количество дней цели (например: 45):")
 
-        try:
-            datetime.strptime(message.text.strip(), "%Y-%m-%d")
-            start_date = message.text.strip()
-        except ValueError:
-            await message.answer("Неправильний формат даты!\nИспользуй формат `ГГГГ-ММ-ДД` или напиши `сегодня`.")
-            return
-    await state.set_state(start_date)
-    await save_habit(message.from_user.id, habit_name, start_date)
+        await callback.answer()
+        return
 
-    await message.answer(
-        f"✅ Привычка успешна добавлена!\n\n"
+    goal_days = int(callback.data.split("_")[1])
+
+    await save_habit(callback.from_user.id, habit_name, goal_days)
+
+    await callback.message.edit_text(
+        f"✅ Привычка создана!\n\n"
         f"Название: <b>{habit_name}</b>\n"
-        f"Дата начала: <b>{start_date}</b>",
-        parse_mode="HTML",
-        reply_markup=main_keyboard
+        f"Цель: <b>{goal_days} дней</b>",
+        parse_mode="HTML"
     )
 
     await state.clear()
-
-@router.message(F.text == "🔄 Обнулить цепочку")
-async def reset_streak_start(message: types.Message):
-    habits = await get_user_habits(message.from_user.id)
-
-    if not habits:
-        await message.answer("У тебя пока нет привычек.",reply_markup=empty_keyboard)
-        return
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
-
-    for habit in habits:
-        habit_id, habit_name, streak, _, _ = habit
-        keyboard.inline_keyboard.append([
-            InlineKeyboardButton(
-                text=f"🔄 {habit_name} ({streak} дней)",
-                callback_data=f"reset_{habit_id}"
-            )
-        ])
-
-    await message.answer("Выбери привычку, цепочку которой хочешь обнулить:", reply_markup=keyboard)
-
-
-@router.callback_query(F.data.startswith("reset_"))
-async def process_reset_callback(callback: types.CallbackQuery):
-    habit_id = int(callback.data.split("_")[1])
-    user_id = callback.from_user.id
-
-    success = await reset_habit_streak(user_id, habit_id)
-
-    if success:
-        await callback.message.edit_text("🔄 Цепочка успешно обнулена.")
-    else:
-        await callback.message.edit_text("❌ Не удалось обнулить цепочку.")
-
     await callback.answer()
+
 
 @router.message(F.text == "✅ Отметить сегодня")
 async def mark_today(message: types.Message):
     habits = await get_user_habits(message.from_user.id)
 
     if not habits:
-        await message.answer("У тебя пока нет привычек.\nДобавь первую через кнопку '🌟 Добавить привычку'")
+        await message.answer("У тебя пока нет привычек.")
         return
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    kb = InlineKeyboardMarkup(inline_keyboard=[])
 
     for habit in habits:
-        habit_id, habit_name,start_date, streak, total, last_date = habit
-        button_text = f"{habit_name} ({streak} 🔥)"
+        habit_id, habit_name, created_date, streak, total, last_date, goal_days = habit
+        button_text = f"{habit_name} ({streak}/{goal_days})"
 
-        keyboard.inline_keyboard.append([
+        kb.inline_keyboard.append([
             InlineKeyboardButton(text=button_text, callback_data=f"mark_{habit_id}")
         ])
 
-    await message.answer(
-        "✅ Отметь, какие привычки ты выполнил сегодня:",
-        reply_markup=keyboard
-    )
+    await message.answer("Отметь выполненные сегодня привычки:", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("mark_"))
@@ -180,108 +147,30 @@ async def process_mark_callback(callback: types.CallbackQuery):
         success = await mark_habit_completed(user_id, habit_id)
 
         if success:
-            await callback.message.edit_text(
-                "✅ Привычка успешно отмечена как выполненная сегодня!",
-                reply_markup=None
-            )
+            await callback.message.edit_text("✅ Привычка отмечена сегодня!")
         else:
-            await callback.message.edit_text(
-                "⚠️ Эта привычка уже отмечена сегодня.",
-            reply_markup=None
-            )
+            await callback.message.edit_text("⚠️ Эта привычка уже отмечена сегодня.")
 
     except Exception as e:
-        logger.error(f"Ошибка при отметке привычки: {e}")
-        await callback.message.edit_text("❌ Произошла ошибка при обработке.")
+        logger.error(f"Ошибка отметки: {e}")
+        await callback.message.edit_text("❌ Ошибка при обработке.")
 
     await callback.answer()
 
+
+
 @router.message(F.text == "📋 Мои привычки")
 async def my_habits(message: types.Message):
-    habits = await get_user_habits(message.from_user.id)
-
-    if not habits:
-        await message.answer(
-            "У тебя пока нет привычек.\nДобавь первую через кнопку '🌟 Добавить привычку'",
-            reply_markup=empty_keyboard
-        )
-        return
-
-    text = "📋 <b>Твои привычки:</b>\n\n"
-
-    for habit in habits:
-        habit_id, habit_name,start_date, streak, total, last_date = habit
-        text += f"• {habit_name} — 🔥 {streak} дней подряд\n"
-
-        await message.answer(text, parse_mode="HTML")
-
+    await message.answer("Функция 'Мои привычки' в процессе обновления.")
 
 @router.message(F.text == "📊 Статистика")
 async def statistics(message: types.Message):
-    habits = await get_user_habits(message.from_user.id)
-
-    if not habits:
-        await message.answer("У тебя пока нет привычек.\nДобавь первую через кнопку '🌟 Добавить привычку'")
-        return
-
-    total_habits = len(habits)
-    total_completed_days = sum(habit[3] for habit in habits)
-    max_streak = max((habit[2] for habit in habits), default=0)
-
-    text = (
-        f"📊 <b>Твоя статистика</b>\n\n"
-        f"Привычек всего: <b>{total_habits}</b>\n"
-        f"Дней выполнено всего: <b>{total_completed_days}</b>\n"
-        f"Лучшая цепочка: <b>{max_streak} дней</b>\n\n"
-        f"<b>По привычкам:</b>\n\n"
-    )
-
-    for habit in habits:
-        habit_id, habit_name, start_date, streak, total_completed, last_date = habit
-        percent = round((total_completed / 30) * 100) if total_completed > 0 else 0
-
-        text += f"{habit_name}\n"
-        text += f" Цепочка: <b>{streak}</b> дней 🔥\n"
-        text += f" Дата начала: {start_date}"
-        text += f" Выполнено: {total_completed} раз ({percent}%)\n\n"
-#Сделать чтобы можно было выбирать цель 10 дней/месяц/и т.д
-    await message.answer(text, parse_mode="HTML")
-
+    await message.answer("Функция статистики в процессе обновления.")
 
 @router.message(F.text == "🗑 Удалить привычку")
-async def delete_habit(message: types.Message):
-    habits = await get_user_habits(message.from_user.id)
+async def delete_habit_start(message: types.Message):
+    await message.answer("Функция удаления в процессе обновления.")
 
-    if not habits:
-        await message.answer("У тебя пока нет привычек для удаления.")
-        return
-
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
-
-    for habit in habits:
-        habit_id, habit_name, streak, _, _ = habit
-        keyboard.inline_keyboard.append([
-            InlineKeyboardButton(text=f"🗑 {habit_name}", callback_data=f"delete_{habit_id}")
-        ])
-
-    await message.answer("Выбери привычку, которую хочешь удалить:", reply_markup=keyboard)
-
-
-@router.callback_query(F.data.startswith("delete_"))
-async def process_delete_callback(callback: types.CallbackQuery):
-    try:
-
-        habit_id = int(callback.data.split("_")[1])
-        user_id = callback.from_user.id
-
-        success = await delete_habit_from_db(user_id, habit_id)
-
-        if success:
-            await callback.message.edit_text("🗑 Привычка успешно удалена.")
-        else:
-            await callback.message.edit_text("❌ Не удалось удалить привычку.")
-    except Exception as e:
-        logger.error(f"Ошибка при удалении привычки: {e}")
-        await callback.message.edit_text("❌ Произошла ошибка.")
-        await callback.answer()
+@router.message(F.text == "🔄 Обнулить цепочку")
+async def reset_streak_start(message: types.Message):
+    await message.answer("Функция обнуления в процессе обновления.")

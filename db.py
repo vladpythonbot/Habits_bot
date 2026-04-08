@@ -13,12 +13,12 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 habit_name TEXT NOT NULL,
-                start_date TEXT NOT NULL,
                 created_date TEXT NOT NULL,
                 last_completed_date TEXT,
                 streak INTEGER DEFAULT 0,
                 total_completed INTEGER DEFAULT 0,
-                reset_date TEXT
+                reset_date TEXT,
+                goal_days INTEGER DEFAULT 30
             )
         """)
         await db.commit()
@@ -41,7 +41,7 @@ async def save_habit(user_id: int, habit_name: str, start_date: str = None):
 async def get_user_habits(user_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT id, habit_name, streak, total_completed, last_completed_date 
+            SELECT id, habit_name,created_date, streak, total_completed, last_completed_date 
             FROM habits 
             WHERE user_id = ?
             ORDER BY streak DESC
