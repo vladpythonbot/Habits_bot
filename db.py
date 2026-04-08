@@ -1,3 +1,4 @@
+# db.py
 import aiosqlite
 from datetime import datetime
 
@@ -6,6 +7,7 @@ DB_NAME = "habits.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
+        # Пересоздаём таблицу (для разработки — удобно)
         await db.execute("DROP TABLE IF EXISTS habits")
 
         await db.execute("""
@@ -17,31 +19,33 @@ async def init_db():
                 last_completed_date TEXT,
                 streak INTEGER DEFAULT 0,
                 total_completed INTEGER DEFAULT 0,
-                reset_date TEXT,
-                goal_days INTEGER DEFAULT 30
+                goal_days INTEGER DEFAULT 30,
+                reset_date TEXT
             )
         """)
         await db.commit()
+    print("✅ Таблица habits успешно пересоздана")
 
 
-async def save_habit(user_id: int, habit_name: str, start_date: str = None):
-    if start_date is None:
-        start_date = datetime.now().strftime("%Y-%m-%d")
+async def save_habit(user_id: int, habit_name: str, goal_days: int = 30):
 
     created_date = datetime.now().strftime("%Y-%m-%d")
 
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
             INSERT INTO habits 
-            (user_id, habit_name, start_date, created_date, last_completed_date, streak, total_completed)
-            VALUES (?, ?, ?, ?, NULL, 0, 0)
-        """, (user_id, habit_name, start_date, created_date))
+            (user_id, habit_name, created_date, last_completed_date, streak, total_completed, goal_days)
+            VALUES (?, ?, ?, NULL, 0, 0, ?)
+        """, (user_id, habit_name, created_date, goal_days))
         await db.commit()
+
+    print(f"Привычка '{habit_name}' (цель: {goal_days} дней) добавлена для пользователя {user_id}")
+
 
 async def get_user_habits(user_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT id, habit_name,created_date, streak, total_completed, last_completed_date 
+            SELECT id, habit_name, created_date, streak, total_completed, last_completed_date, goal_days
             FROM habits 
             WHERE user_id = ?
             ORDER BY streak DESC
@@ -71,10 +75,7 @@ async def mark_habit_completed(user_id: int, habit_id: int):
         from datetime import timedelta
         yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        if last_completed != yesterday:
-            new_streak = 1
-        else:
-            new_streak = current_streak + 1
+        new_streak = 1 if last_completed != yesterday else current_streak + 1
 
         await db.execute("""
             UPDATE habits 
@@ -101,6 +102,7 @@ async def reset_habit_streak(user_id: int, habit_id: int):
         await db.commit()
     return True
 
+
 async def delete_habit_from_db(user_id: int, habit_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
@@ -109,4 +111,3 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
         )
         await db.commit()
     return True
-
