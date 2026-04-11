@@ -112,7 +112,8 @@ async def process_goal(callback: types.CallbackQuery, state: FSMContext):
         parse_mode="HTML",
         reply_markup=None)
 
-    await my_habits(callback.message)
+
+
     await state.clear()
     await callback.answer()
 
