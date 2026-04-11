@@ -103,6 +103,14 @@ async def reset_habit_streak(user_id: int, habit_id: int):
     return True
 
 
+
+async def get_all_users_with_habits():
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("SELECT DISTINCT user_id FROM habits")
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
 async def delete_habit_from_db(user_id: int, habit_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(

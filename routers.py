@@ -161,7 +161,29 @@ async def process_mark_callback(callback: types.CallbackQuery):
 
 @router.message(F.text == "📋 Мои привычки")
 async def my_habits(message: types.Message):
-    await message.answer("Функция 'Мои привычки' в процессе обновления.")
+    habits = await get_user_habits(message.from_user.id)
+
+    if not habits:
+        await message.answer("У тебя пока нет привычек.", reply_markup=empty_keyboard)
+        return
+
+    text = "📋 <b>Твои привычки:</b>\n\n"
+
+    for habit in habits:
+        habit_id,habit_name, created_date, streak, total, last_date, goal_days = habit
+
+        try:
+            created = datetime.strptime(created_date, "%Y-%m-%d")
+            days_since = (datetime.now() - created).days
+            days_text = f"уже {days_since} дней с создания"
+        except:
+            days_text = ""
+
+        text += f"• <b>{habit_name}</b> ({streak}/{goal_days})\n"
+        text += f"   {days_text}\n\n"
+
+    await message.answer(text, parse_mode="HTML")
+
 
 @router.message(F.text == "📊 Статистика")
 async def statistics(message: types.Message):
