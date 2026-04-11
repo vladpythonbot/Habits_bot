@@ -26,9 +26,8 @@ main_keyboard = ReplyKeyboardMarkup(
         [KeyboardButton(text="📋 Мои привычки")],
         [KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="🗑 Удалить привычку")],
-        [KeyboardButton(text="🔄 Обнулить цепочку")
-        [KeyboardButton(text="🌟 Добавить привычку")],]
-    ],
+        [KeyboardButton(text="🔄 Обнулить цепочку")],
+        [KeyboardButton(text="🌟 Добавить привычку")]],
     resize_keyboard=True,
     one_time_keyboard=False
 )
