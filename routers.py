@@ -22,12 +22,12 @@ class Form(StatesGroup):
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🌟 Добавить привычку")],
         [KeyboardButton(text="✅ Отметить сегодня")],
         [KeyboardButton(text="📋 Мои привычки")],
         [KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="🗑 Удалить привычку")],
-        [KeyboardButton(text="🔄 Обнулить цепочку")]
+        [KeyboardButton(text="🔄 Обнулить цепочку")
+        [KeyboardButton(text="🌟 Добавить привычку")],]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
@@ -106,16 +106,14 @@ async def process_goal(callback: types.CallbackQuery, state: FSMContext):
 
     await save_habit(callback.from_user.id, habit_name, goal_days)
 
-
     await callback.message.edit_text(
         f"✅ Привычка создана!\n\n"
         f"Название: <b>{habit_name}</b>\n"
         f"Цель: <b>{goal_days} дней</b>",
-        parse_mode="HTML"
-    )
-    await callback.message.answer(
-        reply_markup=main_keyboard)
+        parse_mode="HTML",
+        reply_markup=None)
 
+    await my_habits(callback.message)
     await state.clear()
     await callback.answer()
 
