@@ -1,7 +1,7 @@
 
 import logging
 from datetime import datetime
-
+from bot import bot
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -112,7 +112,11 @@ async def process_goal(callback: types.CallbackQuery, state: FSMContext):
         parse_mode="HTML",
         reply_markup=None)
 
-
+    await bot.send_message(
+        chat_id=callback.from_user.id,
+        text="\u200B",
+        reply_markup=main_keyboard
+    )
 
     await state.clear()
     await callback.answer()
