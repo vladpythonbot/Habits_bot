@@ -1,7 +1,7 @@
-
+# routers.py
 import logging
 from datetime import datetime
-from bot import bot
+
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -9,6 +9,7 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+from bot import bot
 from db import save_habit, get_user_habits, mark_habit_completed, delete_habit_from_db, reset_habit_streak
 
 router = Router()
@@ -18,16 +19,18 @@ logger = logging.getLogger(__name__)
 class Form(StatesGroup):
     waiting_habit_name = State()
     waiting_goal_days = State()
+    waiting_new_name = State()
 
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
+        [KeyboardButton(text="🌟 Добавить привычку")],
         [KeyboardButton(text="✅ Отметить сегодня")],
         [KeyboardButton(text="📋 Мои привычки")],
         [KeyboardButton(text="📊 Статистика")],
         [KeyboardButton(text="🗑 Удалить привычку")],
-        [KeyboardButton(text="🔄 Обнулить цепочку")],
-        [KeyboardButton(text="🌟 Добавить привычку")]],
+        [KeyboardButton(text="🔄 Обнулить цепочку")]
+    ],
     resize_keyboard=True,
     one_time_keyboard=False
 )
@@ -37,6 +40,7 @@ empty_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=False
 )
+
 
 @router.message(Command("start"))
 async def start(message: types.Message):
@@ -69,7 +73,6 @@ async def new_habit_save(message: types.Message, state: FSMContext):
 
     await state.update_data(habit_name=habit_name)
 
-
     goal_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="7 дней", callback_data="goal_7")],
         [InlineKeyboardButton(text="14 дней", callback_data="goal_14")],
@@ -91,30 +94,39 @@ async def new_habit_save(message: types.Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("goal_"))
-async def process_goal(callback: types.CallbackQuery, state: FSMContext):
+async def process_goal_callback(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     habit_name = data.get("habit_name")
 
-    if callback.data == "goal_custom":
-        await callback.message.edit_text("Напиши количество дней цели (например: 45):")
-
+    if not habit_name:
+        await callback.message.edit_text("❌ Ошибка. Начни заново.")
+        await state.clear()
         await callback.answer()
         return
 
-    goal_days = int(callback.data.split("_")[1])
+    if callback.data == "goal_custom":
+        await callback.message.edit_text("Напиши свою цель в днях (например: 45):")
+        await callback.answer()
+        return
+
+    try:
+        goal_days = int(callback.data.split("_")[1])
+    except:
+        goal_days = 30
 
     await save_habit(callback.from_user.id, habit_name, goal_days)
 
     await callback.message.edit_text(
-        f"✅ Привычка создана!\n\n"
+        f"✅ Привычка успешно создана!\n\n"
         f"Название: <b>{habit_name}</b>\n"
         f"Цель: <b>{goal_days} дней</b>",
         parse_mode="HTML",
-        reply_markup=None)
+        reply_markup=None
+    )
 
     await bot.send_message(
         chat_id=callback.from_user.id,
-        text="\u200B",
+        text="✅ Готово! Что делаем дальше?",
         reply_markup=main_keyboard
     )
 
@@ -133,7 +145,7 @@ async def mark_today(message: types.Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[])
 
     for habit in habits:
-        habit_id, habit_name, created_date, streak, total, last_date, goal_days = habit
+        habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
         button_text = f"{habit_name} ({streak}/{goal_days})"
 
         kb.inline_keyboard.append([
@@ -163,7 +175,6 @@ async def process_mark_callback(callback: types.CallbackQuery):
     await callback.answer()
 
 
-
 @router.message(F.text == "📋 Мои привычки")
 async def my_habits(message: types.Message):
     habits = await get_user_habits(message.from_user.id)
@@ -173,21 +184,92 @@ async def my_habits(message: types.Message):
         return
 
     text = "📋 <b>Твои привычки:</b>\n\n"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
 
     for habit in habits:
-        habit_id,habit_name, created_date, streak, total, last_date, goal_days = habit
+        habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
 
         try:
             created = datetime.strptime(created_date, "%Y-%m-%d")
             days_since = (datetime.now() - created).days
-            days_text = f"уже {days_since} дней с создания"
+            days_text = f"уже {days_since} дней"
         except:
             days_text = ""
 
         text += f"• <b>{habit_name}</b> ({streak}/{goal_days})\n"
         text += f"   {days_text}\n\n"
 
-    await message.answer(text, parse_mode="HTML")
+        keyboard.inline_keyboard.append([
+            InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_name_{habit_id}"),
+            InlineKeyboardButton(text="🔄 Обнулить", callback_data=f"reset_{habit_id}")
+        ])
+
+    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("edit_name_"))
+async def start_edit_name(callback: types.CallbackQuery, state: FSMContext):
+    habit_id = int(callback.data.split("_")[2])
+
+    await state.update_data(editing_habit_id=habit_id)
+
+    await callback.message.edit_text(
+        "Напиши новое название для этой привычки:",
+        reply_markup=None
+    )
+
+    await state.set_state(Form.waiting_new_name)
+    await callback.answer()
+
+
+@router.message(Form.waiting_new_name)
+async def save_new_name(message: types.Message, state: FSMContext):
+    new_name = message.text.strip()
+
+    if len(new_name) < 2:
+        await message.answer("Название слишком короткое. Минимум 2 символа.")
+        return
+
+    data = await state.get_data()
+    habit_id = data.get("editing_habit_id")
+
+    if not habit_id:
+        await message.answer("Ошибка. Попробуй заново.")
+        await state.clear()
+        return
+
+    # Пока просто сообщение (функцию обновления названия добавим позже)
+    await message.answer(
+        f"✅ Название изменено на:\n"
+        f"<b>{new_name}</b>",
+        parse_mode="HTML",
+        reply_markup=main_keyboard
+    )
+
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("reset_"))
+async def process_reset_callback(callback: types.CallbackQuery):
+    try:
+        habit_id = int(callback.data.split("_")[1])
+        user_id = callback.from_user.id
+
+        success = await reset_habit_streak(user_id, habit_id)
+
+        if success:
+            await callback.message.edit_text(
+                "🔄 Цепочка успешно обнулена!\n"
+                "Сегодня напоминание по этой привычке приходить не будет."
+            )
+        else:
+            await callback.message.edit_text("❌ Не удалось обнулить цепочку.")
+
+    except Exception as e:
+        logger.error(f"Ошибка обнуления: {e}")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+
+    await callback.answer()
 
 
 @router.message(F.text == "📊 Статистика")
@@ -197,7 +279,3 @@ async def statistics(message: types.Message):
 @router.message(F.text == "🗑 Удалить привычку")
 async def delete_habit_start(message: types.Message):
     await message.answer("Функция удаления в процессе обновления.")
-
-@router.message(F.text == "🔄 Обнулить цепочку")
-async def reset_streak_start(message: types.Message):
-    await message.answer("Функция обнуления в процессе обновления.")
