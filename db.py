@@ -96,6 +96,7 @@ async def reset_habit_streak(user_id: int, habit_id: int):
         await db.execute("""
             UPDATE habits 
             SET streak = 0,
+            last_completed_date = NULL,
                 reset_date = ?
             WHERE id = ? AND user_id = ?
         """, (today, habit_id, user_id))
