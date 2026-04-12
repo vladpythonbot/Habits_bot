@@ -149,6 +149,7 @@ async def mark_today(message: types.Message):
         habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
 
         if last_date !=today:
+            unmarked_habits.append(habit)
 
             if not unmarked_habits:
                 await message.answer("🎉 Все привычки на сегодня уже отмечены!\nМолодец!")
