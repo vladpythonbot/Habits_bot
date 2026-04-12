@@ -139,7 +139,7 @@ async def mark_today(message: types.Message):
     habits = await get_user_habits(message.from_user.id)
 
     if not habits:
-        await message.answer("У тебя пока нет привычек.")
+        await message.answer("У тебя пока нет привычек.\nДобавь первую через кнопку '🌟 Добавить привычку'")
         return
 
     today = datetime.now().strftime("%Y-%m-%d")
@@ -148,29 +148,28 @@ async def mark_today(message: types.Message):
     for habit in habits:
         habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
 
-        if last_date !=today:
+        if last_date != today:
             unmarked_habits.append(habit)
 
-            if not unmarked_habits:
-                await message.answer("🎉 Все привычки на сегодня уже отмечены!\nМолодец!")
-                return
+    if not unmarked_habits:
+        await message.answer("🎉 Все привычки на сегодня уже отмечены!\nМолодец!")
+        return
 
-        button_text = f"{habit_name} ({streak}/{goal_days})"
+    kb = InlineKeyboardMarkup(inline_keyboard=[])
 
-        kb = InlineKeyboardMarkup(inline_keyboard=[])
+    for habit in unmarked_habits:
+        habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
+        button_text = f"{habit_name} ({streak}/{goal_days} 🔥)"
 
-        for habit in unmarked_habits:
-            habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
-            button_text = f"{habit_name} ({streak}/{goal_days} 🔥)"
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text=button_text, callback_data=f"mark_{habit_id}")
+        ])
 
-            kb.inline_keyboard.append([
-                InlineKeyboardButton(text=button_text, callback_data=f"mark_{habit_id}")
-            ])
+    await message.answer(
+        "✅ Отметь привычки, которые ты выполнил сегодня:",
+        reply_markup=kb
+    )
 
-        await message.answer(
-            "✅ Отметь привычки, которые ты выполнил сегодня:",
-            reply_markup=kb
-        )
 
 @router.callback_query(F.data.startswith("mark_"))
 async def process_mark_callback(callback: types.CallbackQuery):
