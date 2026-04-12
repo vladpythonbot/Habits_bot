@@ -142,18 +142,34 @@ async def mark_today(message: types.Message):
         await message.answer("У тебя пока нет привычек.")
         return
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[])
+    today = datetime.now().strftime("%Y-%m-%d")
+    unmarked_habits = []
 
     for habit in habits:
         habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
+
+        if last_date !=today:
+
+            if not unmarked_habits:
+                await message.answer("🎉 Все привычки на сегодня уже отмечены!\nМолодец!")
+                return
+
         button_text = f"{habit_name} ({streak}/{goal_days})"
 
-        kb.inline_keyboard.append([
-            InlineKeyboardButton(text=button_text, callback_data=f"mark_{habit_id}")
-        ])
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
 
-    await message.answer("Отметь выполненные сегодня привычки:", reply_markup=kb)
+        for habit in unmarked_habits:
+            habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
+            button_text = f"{habit_name} ({streak}/{goal_days} 🔥)"
 
+            kb.inline_keyboard.append([
+                InlineKeyboardButton(text=button_text, callback_data=f"mark_{habit_id}")
+            ])
+
+        await message.answer(
+            "✅ Отметь привычки, которые ты выполнил сегодня:",
+            reply_markup=kb
+        )
 
 @router.callback_query(F.data.startswith("mark_"))
 async def process_mark_callback(callback: types.CallbackQuery):
@@ -238,7 +254,7 @@ async def save_new_name(message: types.Message, state: FSMContext):
         await state.clear()
         return
 
-    # Пока просто сообщение (функцию обновления названия добавим позже)
+
     await message.answer(
         f"✅ Название изменено на:\n"
         f"<b>{new_name}</b>",
