@@ -7,9 +7,6 @@ DB_NAME = "habits.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
-        # Пересоздаём таблицу (для разработки — удобно)
-        await db.execute("DROP TABLE IF EXISTS habits")
-
         await db.execute("""
             CREATE TABLE habits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,6 +20,7 @@ async def init_db():
                 reset_date TEXT
             )
         """)
+        await init_reminder_table()
         await db.commit()
     print("✅ Таблица habits успешно пересоздана")
 
@@ -120,3 +118,40 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
         )
         await db.commit()
     return True
+
+
+async def set_reminder_settings(user_id: int, enabled: bool, reminder_time: str = "22:00"):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO reminder_settings (user_id, enabled, reminder_time)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                enabled = excluded.enabled,
+                reminder_time = excluded.reminder_time
+        """, (user_id, enabled, reminder_time))
+        await db.commit()
+
+
+async def get_reminder_settings(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT enabled, reminder_time 
+            FROM reminder_settings 
+            WHERE user_id = ?
+        """, (user_id,))
+        row = await cursor.fetchone()
+        if row:
+            return {"enabled": row[0], "reminder_time": row[1]}
+        return {"enabled": False, "reminder_time": "15:00"}
+
+
+async def init_reminder_table():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS reminder_settings (
+                user_id INTEGER PRIMARY KEY,
+                enabled BOOLEAN DEFAULT FALSE,
+                reminder_time TEXT DEFAULT "15:00"
+            )
+        """)
+        await db.commit()

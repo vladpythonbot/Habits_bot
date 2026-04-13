@@ -10,7 +10,8 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemo
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot import bot
-from db import save_habit, get_user_habits, mark_habit_completed, delete_habit_from_db, reset_habit_streak
+from db import save_habit, get_user_habits, mark_habit_completed, delete_habit_from_db, reset_habit_streak, \
+    init_reminder_table,get_reminder_settings,set_reminder_settings
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ class Form(StatesGroup):
     waiting_habit_name = State()
     waiting_goal_days = State()
     waiting_new_name = State()
+    waiting_reminder_time = State()
 
 
 main_keyboard = ReplyKeyboardMarkup(
@@ -28,6 +30,7 @@ main_keyboard = ReplyKeyboardMarkup(
         [KeyboardButton(text="✅ Отметить сегодня")],
         [KeyboardButton(text="📋 Мои привычки")],
         [KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="🔔 Напоминания")],
         [KeyboardButton(text="🗑 Удалить привычку")],
         [KeyboardButton(text="🔄 Обнулить цепочку")]
     ],
@@ -291,6 +294,58 @@ async def process_reset_callback(callback: types.CallbackQuery):
 @router.message(F.text == "📊 Статистика")
 async def statistics(message: types.Message):
     await message.answer("Функция статистики в процессе обновления.")
+
+
+@router.message(F.text == "🔔 Напоминания")
+async def reminders_settings(message: types.Message, state: FSMContext):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔔 Включить напоминания", callback_data="reminder_on")],
+        [InlineKeyboardButton(text="🔕 Выключить напоминания", callback_data="reminder_off")],
+        [InlineKeyboardButton(text="⏰ Выбрать время напоминания", callback_data="reminder_time")]
+    ])
+
+    await message.answer(
+        "Настройки напоминаний:",
+        reply_markup=kb
+    )
+
+@router.callback_query(F.data == "reminder_on")
+async def reminder_on(callback: types.CallbackQuery):
+    # Пока просто заглушка
+    await callback.message.edit_text("✅ Напоминания включены!")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "reminder_off")
+async def reminder_off(callback: types.CallbackQuery):
+    await callback.message.edit_text("🔕 Напоминания выключены.")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "reminder_time")
+async def reminder_time_start(callback: types.CallbackQuery, state: FSMContext):
+    time_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="9:00", callback_data="time_9")],
+        [InlineKeyboardButton(text="12:00", callback_data="time_12")],
+        [InlineKeyboardButton(text="15:00", callback_data="time_15")],
+        [InlineKeyboardButton(text="18:00", callback_data="time_18")]
+    ])
+
+    await callback.message.edit_text(
+        "Выбери время, в которое хочешь получать напоминания:",
+        reply_markup=time_kb
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("time_"))
+async def set_reminder_time(callback: types.CallbackQuery):
+    hour = callback.data.split("_")[1]
+    time_str=f"{hour}:00"
+
+    await set_reminder_settings(callback.from_user.id, time_str)
+
+    await callback.message.edit_text(f"✅ Время напоминания изменено на {time_str}")
+    await callback.answer()
 
 @router.message(F.text == "🗑 Удалить привычку")
 async def delete_habit_start(message: types.Message):
