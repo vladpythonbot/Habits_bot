@@ -50,41 +50,56 @@ async def get_user_habits(user_id: int):
         """, (user_id,))
         return await cursor.fetchall()
 
-
 async def mark_habit_completed(user_id: int, habit_id: int):
     today = datetime.now().strftime("%Y-%m-%d")
 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT last_completed_date, streak 
+            SELECT last_completed_date, streak, goal_days, habit_name 
             FROM habits 
             WHERE id = ? AND user_id = ?
         """, (habit_id, user_id))
         result = await cursor.fetchone()
 
         if not result:
-            return False
+            return False, None
 
-        last_completed, current_streak = result
+        last_completed, current_streak, goal_days, habit_name = result
 
         if last_completed == today:
-            return False
+            return False, None
 
         from datetime import timedelta
         yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
         new_streak = 1 if last_completed != yesterday else current_streak + 1
 
+        achieved_goal = False
+        new_goal = goal_days
+
+        if new_streak >= goal_days:
+            achieved_goal = True
+            if goal_days < 30:
+                new_goal = 30
+            elif goal_days < 60:
+                new_goal = 60
+            elif goal_days < 100:
+                new_goal = 100
+            else:
+                new_goal = goal_days + 50
+
         await db.execute("""
             UPDATE habits 
             SET last_completed_date = ?,
                 streak = ?,
-                total_completed = total_completed + 1
+                total_completed = total_completed + 1,
+                goal_days = ?
             WHERE id = ? AND user_id = ?
-        """, (today, new_streak, habit_id, user_id))
+        """, (today, new_streak, new_goal, habit_id, user_id))
 
         await db.commit()
-        return True
+
+        return True, (achieved_goal, habit_name, new_streak, new_goal)
 
 
 async def reset_habit_streak(user_id: int, habit_id: int):

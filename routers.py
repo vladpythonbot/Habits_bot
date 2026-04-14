@@ -137,6 +137,7 @@ async def process_goal_callback(callback: types.CallbackQuery, state: FSMContext
     await callback.answer()
 
 
+
 @router.message(F.text == "✅ Отметить сегодня")
 async def mark_today(message: types.Message):
     habits = await get_user_habits(message.from_user.id)
@@ -173,23 +174,32 @@ async def mark_today(message: types.Message):
         reply_markup=kb
     )
 
-
 @router.callback_query(F.data.startswith("mark_"))
 async def process_mark_callback(callback: types.CallbackQuery):
     try:
         habit_id = int(callback.data.split("_")[1])
         user_id = callback.from_user.id
 
-        success = await mark_habit_completed(user_id, habit_id)
+        success, goal_info = await mark_habit_completed(user_id, habit_id)
 
         if success:
-            await callback.message.edit_text("✅ Привычка отмечена сегодня!")
+            if goal_info and goal_info[0]:
+                _, habit_name, new_streak, new_goal = goal_info
+                await callback.message.edit_text(
+                    f"🎉 <b>Поздравляем! Цель достигнута!</b>\n\n"
+                    f"Привычка: <b>{habit_name}</b>\n"
+                    f"Новая цепочка: <b>{new_streak} дней</b>\n"
+                    f"Следующая цель: <b>{new_goal} дней</b> 🔥",
+                    parse_mode="HTML"
+                )
+            else:
+                await callback.message.edit_text("✅ Привычка успешно отмечена сегодня!")
         else:
             await callback.message.edit_text("⚠️ Эта привычка уже отмечена сегодня.")
 
     except Exception as e:
         logger.error(f"Ошибка отметки: {e}")
-        await callback.message.edit_text("❌ Ошибка при обработке.")
+        await callback.message.edit_text("❌ Произошла ошибка.")
 
     await callback.answer()
 
