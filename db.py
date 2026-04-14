@@ -134,7 +134,7 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
     return True
 
 
-async def set_reminder_settings(user_id: int, enabled: bool, reminder_time: str = "22:00"):
+async def set_reminder_settings(user_id: int, enabled: bool, reminder_time: str = "15:00"):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
             INSERT INTO reminder_settings (user_id, enabled, reminder_time)
