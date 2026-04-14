@@ -238,6 +238,7 @@ async def my_habits(message: types.Message):
 async def start_edit_name(callback: types.CallbackQuery, state: FSMContext):
     habit_id = int(callback.data.split("_")[2])
 
+
     await state.update_data(editing_habit_id=habit_id)
 
     await callback.message.edit_text(
@@ -282,11 +283,22 @@ async def process_reset_callback(callback: types.CallbackQuery):
         habit_id = int(callback.data.split("_")[1])
         user_id = callback.from_user.id
 
+        habits = await get_user_habits(user_id)
+
+        habit_name = "Привычка"
+
+
+        for habit in habits:
+            if habit[0]==habit_id:
+                habit_name = habit[1]
+                break
+        habit_name1=habit_name
+
         success = await reset_habit_streak(user_id, habit_id)
 
         if success:
             await callback.message.edit_text(
-                "🔄 Цепочка успешно обнулена!\n"
+                f"🔄 Цепочка привычки {habit_name1} успешно обнулена!\n"
                 "Сегодня напоминание по этой привычке приходить не будет."
             )
         else:
@@ -304,7 +316,6 @@ async def statistics(message: types.Message):
     await message.answer("Функция статистики в процессе обновления.")
 
 
-# ====================== НАПОМИНАНИЯ ======================
 @router.message(F.text == "🔔 Напоминания")
 async def reminders_settings(message: types.Message):
     settings = await get_reminder_settings(message.from_user.id)
