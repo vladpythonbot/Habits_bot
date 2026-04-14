@@ -1,4 +1,4 @@
-# tasks.py
+
 import logging
 import aiosqlite
 from datetime import datetime
@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 async def daily_reminder_and_reset():
-    logger.info("Запуск ежедневной задачи для всех пользователей (22:00)")
 
     users = await get_all_users_with_habits()
 

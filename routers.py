@@ -30,9 +30,7 @@ main_keyboard = ReplyKeyboardMarkup(
         [KeyboardButton(text="✅ Отметить сегодня")],
         [KeyboardButton(text="📋 Мои привычки")],
         [KeyboardButton(text="📊 Статистика")],
-        [KeyboardButton(text="🔔 Напоминания")],
-        [KeyboardButton(text="🗑 Удалить привычку")],
-        [KeyboardButton(text="🔄 Обнулить цепочку")]
+        [KeyboardButton(text="🔔 Напоминания")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
@@ -306,29 +304,60 @@ async def statistics(message: types.Message):
     await message.answer("Функция статистики в процессе обновления.")
 
 
+# ====================== НАПОМИНАНИЯ ======================
 @router.message(F.text == "🔔 Напоминания")
-async def reminders_settings(message: types.Message, state: FSMContext):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔔 Включить напоминания", callback_data="reminder_on")],
-        [InlineKeyboardButton(text="🔕 Выключить напоминания", callback_data="reminder_off")],
-        [InlineKeyboardButton(text="⏰ Выбрать время напоминания", callback_data="reminder_time")]
-    ])
+async def reminders_settings(message: types.Message):
+    settings = await get_reminder_settings(message.from_user.id)
+    enabled = settings["enabled"]
+    time_str = settings["reminder_time"]
+
+    if enabled:
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"🔔 Включено ({time_str})", callback_data="rem_status")],
+            [InlineKeyboardButton(text="🔕 Выключить напоминания", callback_data="rem_off")],
+            [InlineKeyboardButton(text="⏰ Изменить время", callback_data="rem_time")]
+        ])
+        status_text = "🟢 Напоминания включены"
+    else:
+        # Если выключены — показываем кнопку "Включить"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔴 Напоминания выключены", callback_data="rem_status")],
+            [InlineKeyboardButton(text="🔔 Включить напоминания", callback_data="rem_on")],
+            [InlineKeyboardButton(text="⏰ Изменить время", callback_data="rem_time")]
+        ])
+        status_text = "🔴 Напоминания выключены"
 
     await message.answer(
-        "Настройки напоминаний:",
+        f"🔔 Настройки напоминаний\n\n"
+        f"{status_text}\n"
+        f"Время: <b>{time_str}</b>",
+        parse_mode="HTML",
         reply_markup=kb
     )
 
-@router.callback_query(F.data == "reminder_on")
+
+@router.callback_query(F.data == "rem_on")
 async def reminder_on(callback: types.CallbackQuery):
-    # Пока просто заглушка
-    await callback.message.edit_text("✅ Напоминания включены!")
+    await set_reminder_settings(callback.from_user.id, True)
+
+    await callback.message.edit_text(
+        "✅ Напоминания включены!\n\n"
+        "Теперь ты будешь получать ежедневные напоминания.",
+        reply_markup=None
+    )
     await callback.answer()
 
 
-@router.callback_query(F.data == "reminder_off")
+@router.callback_query(F.data == "rem_off")
 async def reminder_off(callback: types.CallbackQuery):
-    await callback.message.edit_text("🔕 Напоминания выключены.")
+    await set_reminder_settings(callback.from_user.id, False)
+
+    await callback.message.edit_text(
+        "🔕 Напоминания выключены.\n\n"
+        "Ты больше не будешь получать напоминания.",
+        reply_markup=None
+    )
     await callback.answer()
 
 

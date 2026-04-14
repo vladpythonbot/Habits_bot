@@ -31,7 +31,6 @@ async def main():
     scheduler.start()
 
     print("🚀 Бот успешно запущен")
-    print("Напоминания будут приходить каждый день в 22:00")
 
     await dp.start_polling(bot)
 

@@ -8,7 +8,7 @@ DB_NAME = "habits.db"
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
-            CREATE TABLE habits (
+            CREATE TABLE IF NOT EXISTS habits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 habit_name TEXT NOT NULL,
@@ -20,9 +20,10 @@ async def init_db():
                 reset_date TEXT
             )
         """)
+
         await init_reminder_table()
+
         await db.commit()
-    print("✅ Таблица habits успешно пересоздана")
 
 
 async def save_habit(user_id: int, habit_name: str, goal_days: int = 30):
@@ -36,8 +37,6 @@ async def save_habit(user_id: int, habit_name: str, goal_days: int = 30):
             VALUES (?, ?, ?, NULL, 0, 0, ?)
         """, (user_id, habit_name, created_date, goal_days))
         await db.commit()
-
-    print(f"Привычка '{habit_name}' (цель: {goal_days} дней) добавлена для пользователя {user_id}")
 
 
 async def get_user_habits(user_id: int):
@@ -157,7 +156,9 @@ async def get_reminder_settings(user_id: int):
         row = await cursor.fetchone()
         if row:
             return {"enabled": row[0], "reminder_time": row[1]}
-        return {"enabled": False, "reminder_time": "15:00"}
+
+        await set_reminder_settings(user_id, True, reminder_time="15:00")
+        return {"enabled": True, "reminder_time": "15:00"}
 
 
 async def init_reminder_table():
@@ -165,7 +166,7 @@ async def init_reminder_table():
         await db.execute("""
             CREATE TABLE IF NOT EXISTS reminder_settings (
                 user_id INTEGER PRIMARY KEY,
-                enabled BOOLEAN DEFAULT FALSE,
+                enabled BOOLEAN DEFAULT 0,
                 reminder_time TEXT DEFAULT "15:00"
             )
         """)
