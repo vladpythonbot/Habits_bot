@@ -314,15 +314,13 @@ async def reminders_settings(message: types.Message):
     if enabled:
 
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"🔔 Включено ({time_str})", callback_data="rem_status")],
             [InlineKeyboardButton(text="🔕 Выключить напоминания", callback_data="rem_off")],
             [InlineKeyboardButton(text="⏰ Изменить время", callback_data="rem_time")]
         ])
         status_text = "🟢 Напоминания включены"
     else:
-        # Если выключены — показываем кнопку "Включить"
+
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔴 Напоминания выключены", callback_data="rem_status")],
             [InlineKeyboardButton(text="🔔 Включить напоминания", callback_data="rem_on")],
             [InlineKeyboardButton(text="⏰ Изменить время", callback_data="rem_time")]
         ])
