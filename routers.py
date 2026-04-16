@@ -136,6 +136,42 @@ async def process_goal_callback(callback: types.CallbackQuery, state: FSMContext
     await callback.answer()
 
 
+@router.message(Form.waiting_goal_days)
+async def process_custom_goal(message: types.Message, state: FSMContext):
+    try:
+        goal_days = int(message.text.strip())
+
+        if goal_days < 1:
+            await message.answer("❌ Цель должна быть больше 0 дней.")
+            return
+        if goal_days >366:
+            await message.answer("❌ Слишком большая цель. Максимум 366 дней.")
+            return
+
+    except ValueError:
+        await message.answer("❌ Пожалуйста, введи число (например: 45)")
+        return
+
+    data = await state.get_data()
+    habit_name = data.get("habit_name")
+
+    if not habit_name:
+        await message.answer("❌ Ошибка. Начни создание привычки заново.")
+        await state.clear()
+        return
+
+    await save_habit(message.from_user.id, habit_name, goal_days)
+
+    await message.answer(
+        f"✅ Привычка успешно создана!\n\n"
+        f"Название: <b>{habit_name}</b>\n"
+        f"Цель: <b>{goal_days} дней</b>\n\n"
+        f"Теперь отмечай её каждый день!",
+        parse_mode="HTML",
+        reply_markup=main_keyboard
+    )
+
+    await state.clear()
 
 @router.message(F.text == "✅ Отметить сегодня")
 async def mark_today(message: types.Message):
