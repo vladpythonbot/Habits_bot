@@ -49,6 +49,7 @@ async def get_user_habits(user_id: int):
         """, (user_id,))
         return await cursor.fetchall()
 
+
 async def mark_habit_completed(user_id: int, habit_id: int):
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -115,6 +116,18 @@ async def reset_habit_streak(user_id: int, habit_id: int):
         await db.commit()
     return True
 
+
+async def update_habit_name(user_id: int, habit_id: int, new_name: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor=await db.execute("""
+            UPDATE habits 
+            SET habit_name = ?
+            WHERE id = ? AND user_id = ?
+        """, (new_name, habit_id, user_id))
+        await db.commit()
+
+        rowcount=cursor.rowcount
+        return cursor.rowcount>0
 
 
 async def get_all_users_with_habits():
