@@ -185,7 +185,7 @@ async def mark_today(message: types.Message):
     unmarked_habits = [habit for habit in habits if habit[5]!=today]
 
     if not unmarked_habits:
-        await message.answer("🎉 Все привычки на сегодня уже отмечены!\nМолодец!")
+        await message.answer("🎉 Все привычки на сегодня уже отмечены!\n<b>Молодец!<b>",parse_mode="HTML")
         return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[]
@@ -246,8 +246,7 @@ async def my_habits(message: types.Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
 
     for habit in habits:
-        habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
-
+        habit_id, habit_name, created_date, streak, total_completed, last_date,goal_days = habit
         try:
             created = datetime.strptime(created_date, "%Y-%m-%d")
             days_since = (datetime.now() - created).days
@@ -307,12 +306,9 @@ async def statistics(message: types.Message):
         )
 
     for habit in habits:
-        habit_id, habit_name, created_date, streak, total_completed, goal_days = habit
+        habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
 
-        if goal_days > 0:
-            percent = round((total_completed / goal_days) * 100)
-        else:
-            percent = 0
+        percent = round((total_completed / goal_days) * 100) if goal_days > 0 else 0
 
         text += f"• <b>{habit_name}</b> ({streak}/{goal_days})\n"
         text += f"   Выполнено: {total_completed} раз ({percent}% от цели)\n\n"
