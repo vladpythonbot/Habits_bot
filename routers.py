@@ -125,8 +125,11 @@ async def process_goal_callback(callback: types.CallbackQuery, state: FSMContext
         f"✅ Привычка успешно создана!\n\n"
         f"Название: <b>{habit_name}</b>\n"
         f"Цель: <b>{goal_days} дней</b>",
-        parse_mode="HTML",
-        reply_markup=None
+        parse_mode="HTML")
+
+    await callback.message.answer(
+        "Выбери действие:",
+        reply_markup=main_keyboard
     )
 
     await state.clear()
