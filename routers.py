@@ -360,7 +360,6 @@ async def reminders_settings(message: types.Message):
         toggle_btn = InlineKeyboardButton(text="🔔 Включить", callback_data="rem_on")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"Статус: {status}", callback_data="dummy")],  # просто для вида
         [toggle_btn],
         [InlineKeyboardButton(text="⏰ Изменить время", callback_data="rem_change_time")]
     ])
