@@ -374,6 +374,46 @@ async def reminders_settings(message: types.Message):
     )
 
 
+@router.message(F.text == "⏰ Изменить время")
+async def change_reminder_time(message: types.Message, state: FSMContext):
+    reminder = await get_reminder_settings(message.from_user.id)
+    current_time = reminder["reminder_time"]
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="9:00", callback_data="set_time_9")],
+        [InlineKeyboardButton(text="12:00", callback_data="set_time_12")],
+        [InlineKeyboardButton(text="15:00", callback_data="set_time_15")],
+        [InlineKeyboardButton(text="18:00", callback_data="set_time_18")],
+    ])
+
+    await message.answer(
+        f"⏰ Текущее время напоминания: <b>{current_time}</b>\n\n"
+        f"Выбери новое время:",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data.startswith("set_time_"))
+async def process_set_time(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        new_hour = int(callback.data.split("_")[2])
+        new_time_str = f"{new_hour:02d}:00"
+
+        await set_reminder_settings(callback.from_user.id, enabled=True, reminder_time=new_time_str)
+
+        await callback.message.edit_text(
+            f"✅ Время напоминания успешно изменено!\n\n"
+            f"Новое время: <b>{new_time_str}</b>",
+            parse_mode="HTML"
+        )
+        await callback.answer("Время обновлено!")
+
+    except Exception as e:
+        logger.error(f"Ошибка изменения времени: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
+
+
 @router.callback_query(F.data == "rem_on")
 async def reminder_on(callback: types.CallbackQuery):
     await set_reminder_settings(callback.from_user.id, True)
@@ -384,7 +424,6 @@ async def reminder_on(callback: types.CallbackQuery):
         reply_markup=None
     )
     await callback.answer()
-"""Доработать напоминания и сооб о том что я сегодня всё отметил В ОТМЕТИТЬ"""
 
 @router.callback_query(F.data == "rem_off")
 async def reminder_off(callback: types.CallbackQuery):
