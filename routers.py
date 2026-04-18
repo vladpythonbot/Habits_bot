@@ -1,7 +1,8 @@
 # routers.py
 import logging
 from datetime import datetime
-
+import aiosqlite
+from zoneinfo import ZoneInfo
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -15,6 +16,7 @@ from db import save_habit, get_user_habits, mark_habit_completed, delete_habit_f
 router = Router()
 logger = logging.getLogger(__name__)
 
+DB_NAME = "habits.db"
 
 class Form(StatesGroup):
     waiting_habit_name = State()
@@ -204,6 +206,7 @@ async def mark_today(message: types.Message):
         reply_markup=kb
     )
 
+
 @router.callback_query(F.data.startswith("mark_"))
 async def process_mark_callback(callback: types.CallbackQuery):
     try:
@@ -212,26 +215,53 @@ async def process_mark_callback(callback: types.CallbackQuery):
 
         success, goal_info = await mark_habit_completed(user_id, habit_id)
 
-        if success:
-            if goal_info and goal_info[0]:
-                _, habit_name, new_streak, new_goal = goal_info
-                await callback.message.edit_text(
-                    f"🎉 <b>Поздравляем! Цель достигнута!</b>\n\n"
-                    f"Привычка: <b>{habit_name}</b>\n"
-                    f"Новая цепочка: <b>{new_streak} дней</b>\n"
-                    f"Следующая цель: <b>{new_goal} дней</b> 🔥",
-                    parse_mode="HTML"
-                )
-            else:
-                await callback.message.edit_text("✅ Привычка успешно отмечена сегодня!")
-        else:
-            await callback.message.edit_text("⚠️ Эта привычка уже отмечена сегодня.")
+        if not success:
+            await callback.answer("⚠️ Эта привычка уже отмечена сегодня", show_alert=True)
+            return
+
+        habits = await get_user_habits(user_id)
+        today = datetime.now().strftime("%Y-%m-%d")
+        unmarked_habits = [h for h in habits if h[5] != today]
+
+        if not unmarked_habits:
+            await callback.message.edit_text(
+                "🎉 Отлично! Все привычки на сегодня отмечены!\nМолодец! 🔥",
+                reply_markup=None
+            )
+            await callback.answer("✅ Всё отмечено!")
+            return
+
+        congrats_text = ""
+        if goal_info and goal_info[0]:
+            _, habit_name, new_streak, new_goal = goal_info
+            congrats_text = (
+                f"🎉 <b>Цель достигнута!</b>\n\n"
+                f"Привычка: <b>{habit_name}</b>\n"
+                f"Новая цепочка: <b>{new_streak} дней</b>\n"
+                f"Следующая цель: <b>{new_goal} дней</b> 🔥\n\n"
+            )
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
+        for habit in unmarked_habits:
+            h_id, h_name, _, streak, _, _, g_days = habit
+            btn_text = f"{h_name} ({streak}/{g_days} 🔥)"
+            kb.inline_keyboard.append([
+                InlineKeyboardButton(text=btn_text, callback_data=f"mark_{h_id}")
+            ])
+
+        await callback.message.edit_text(
+            f"{congrats_text}"
+            f"⏰ <b>Напоминание о привычках</b>\n\n"
+            f"Отметь, что ты сделал сегодня:",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+
+        await callback.answer("✅ Отмечено!")
 
     except Exception as e:
-        logger.error(f"Ошибка отметки: {e}")
-        await callback.message.edit_text("❌ Произошла ошибка.")
-
-    await callback.answer()
+        logger.error(f"Ошибка при отметке привычки: {e}", exc_info=True)
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
 @router.message(F.text == "📋 Мои привычки")
@@ -354,7 +384,7 @@ async def reminder_on(callback: types.CallbackQuery):
         reply_markup=None
     )
     await callback.answer()
-
+"""Доработать напоминания и сооб о том что я сегодня всё отметил В ОТМЕТИТЬ"""
 
 @router.callback_query(F.data == "rem_off")
 async def reminder_off(callback: types.CallbackQuery):
@@ -460,4 +490,66 @@ async def process_delete_callback(callback: types.CallbackQuery):
 
     await callback.answer()
 
+
+async def send_daily_reminder_to_user(user_id: int):
+    habits = await get_user_habits(user_id)
+    if not habits:
+        return
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    unmarked_habits = [h for h in habits if h[5] != today]
+
+    if not unmarked_habits:
+        await bot.send_message(
+            user_id,
+            "🎉 Отлично! Сегодня все привычки уже отмечены!\nМолодец 🔥",
+            parse_mode="HTML"
+        )
+        return
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[])
+    for habit in unmarked_habits:
+        habit_id, habit_name, _, streak, _, _, goal_days = habit
+        text = f"{habit_name} ({streak}/{goal_days} 🔥)"
+        kb.inline_keyboard.append([
+            InlineKeyboardButton(text=text, callback_data=f"mark_{habit_id}")
+        ])
+
+    try:
+        await bot.send_message(
+            chat_id=user_id,
+            text=f"⏰ <b>Напоминание о привычках</b>\n\n"
+                 f"Сейчас {datetime.now().strftime('%H:%M')}\n\n"
+                 f"Отметь, что ты сделал сегодня:",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    except Exception as e:
+        logger.error(f"Не удалось отправить напоминание пользователю {user_id}: {e}")
+
+
+async def daily_reminder():
+    """Отправляет ежедневное напоминание с неотмеченными привычками"""
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    current_hour = now.hour
+
+    if now.minute != 0 or current_hour not in [9, 12, 15, 18]:
+        return
+
+    logger.info(f"Запуск напоминаний на {current_hour:02d}:00")
+
+    try:
+        async with aiosqlite.connect(DB_NAME) as db:
+            cursor = await db.execute("""
+                SELECT user_id 
+                FROM reminder_settings 
+                WHERE enabled = 1 AND reminder_time = ?
+            """, (f"{current_hour:02d}:00",))
+            users = await cursor.fetchall()
+
+        for (user_id,) in users:
+            await send_daily_reminder_to_user(user_id)
+
+    except Exception as e:
+        logger.error(f"Ошибка daily_reminder: {e}", exc_info=True)
 

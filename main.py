@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bot import bot, dp
 from routers import router
 from db import init_db
+from routers import daily_reminder
 from tasks import daily_reminder_and_reset
 logging.basicConfig(
     level=logging.INFO,
@@ -20,13 +21,9 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone="Europe/Kyiv")
 
-    scheduler.add_job(
-        daily_reminder_and_reset,
-        trigger="cron",
-        hour=22,
-        minute=0,
-        id="daily_reminder_and_reset"
-    )
+    scheduler.add_job(daily_reminder,
+                      "cron", hour="9,12,15,18", minute=0,
+                      id="daily_reminder")
 
     scheduler.start()
 
