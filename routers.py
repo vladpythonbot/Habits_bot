@@ -374,7 +374,7 @@ async def reminders_settings(message: types.Message):
     )
 
 
-@router.message(F.text == "⏰ Изменить время")
+@router.message(F.data.startswith("rem_time"))
 async def change_reminder_time(message: types.Message, state: FSMContext):
     reminder = await get_reminder_settings(message.from_user.id)
     current_time = reminder["reminder_time"]
