@@ -354,19 +354,19 @@ async def reminders_settings(message: types.Message):
 
     if enabled:
         status = "🟢 Включены"
-        main_btn = InlineKeyboardButton(text="🔕 Выключить", callback_data="rem_off")
+        toggle_btn = InlineKeyboardButton(text="🔕 Выключить", callback_data="rem_off")
     else:
         status = "🔴 Выключены"
-        main_btn = InlineKeyboardButton(text="🔔 Включить", callback_data="rem_on")
+        toggle_btn = InlineKeyboardButton(text="🔔 Включить", callback_data="rem_on")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{status}", callback_data="rem_status")],
-        [main_btn],
-        [InlineKeyboardButton(text="⏰ Изменить время", callback_data="rem_time")]
+        [InlineKeyboardButton(text=f"Статус: {status}", callback_data="dummy")],  # просто для вида
+        [toggle_btn],
+        [InlineKeyboardButton(text="⏰ Изменить время", callback_data="rem_change_time")]
     ])
 
     await message.answer(
-        f"🔔 Настройки напоминаний\n\n"
+        f"🔔 <b>Настройки напоминаний</b>\n\n"
         f"Статус: <b>{status}</b>\n"
         f"Время: <b>{time_str}</b>",
         parse_mode="HTML",
@@ -374,66 +374,63 @@ async def reminders_settings(message: types.Message):
     )
 
 
-@router.message(F.data.startswith("rem_time"))
-async def change_reminder_time(message: types.Message, state: FSMContext):
-    reminder = await get_reminder_settings(message.from_user.id)
-    current_time = reminder["reminder_time"]
+@router.callback_query(F.data == "rem_change_time")
+async def change_reminder_time(callback: types.CallbackQuery):
+    settings = await get_reminder_settings(callback.from_user.id)
+    current_time = settings["reminder_time"]
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="9:00", callback_data="set_time_9")],
+        [InlineKeyboardButton(text="09:00", callback_data="set_time_9")],
         [InlineKeyboardButton(text="12:00", callback_data="set_time_12")],
         [InlineKeyboardButton(text="15:00", callback_data="set_time_15")],
         [InlineKeyboardButton(text="18:00", callback_data="set_time_18")],
     ])
 
-    await message.answer(
+    await callback.message.edit_text(
         f"⏰ Текущее время напоминания: <b>{current_time}</b>\n\n"
         f"Выбери новое время:",
         parse_mode="HTML",
         reply_markup=kb
     )
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("set_time_"))
-async def process_set_time(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        new_hour = int(callback.data.split("_")[2])
-        new_time_str = f"{new_hour:02d}:00"
+async def process_set_time(callback: types.CallbackQuery):
 
-        await set_reminder_settings(callback.from_user.id, enabled=True, reminder_time=new_time_str)
+    try:
+        hour = int(callback.data.split("_")[2])
+        new_time = f"{hour:02d}:00"
+
+        await set_reminder_settings(
+            user_id=callback.from_user.id,
+            enabled=True,
+            reminder_time=new_time
+        )
 
         await callback.message.edit_text(
-            f"✅ Время напоминания успешно изменено!\n\n"
-            f"Новое время: <b>{new_time_str}</b>",
+            f"✅ Время напоминания изменено!\n\n"
+            f"Новое время: <b>{new_time}</b>",
             parse_mode="HTML"
         )
-        await callback.answer("Время обновлено!")
+        await callback.answer("Время обновлено ✓")
 
     except Exception as e:
-        logger.error(f"Ошибка изменения времени: {e}")
-        await callback.answer("❌ Произошла ошибка", show_alert=True)
+        logger.error(f"Ошибка смены времени: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 
 @router.callback_query(F.data == "rem_on")
 async def reminder_on(callback: types.CallbackQuery):
-    await set_reminder_settings(callback.from_user.id, True)
-
-    await callback.message.edit_text(
-        "✅ Напоминания включены!\n\n"
-        "Теперь ты будешь получать ежедневные напоминания.",
-        reply_markup=None
-    )
+    await set_reminder_settings(callback.from_user.id, enabled=True)
+    await callback.message.edit_text("✅ Напоминания включены!")
     await callback.answer()
+
 
 @router.callback_query(F.data == "rem_off")
 async def reminder_off(callback: types.CallbackQuery):
-    await set_reminder_settings(callback.from_user.id, False)
-
-    await callback.message.edit_text(
-        "🔕 Напоминания выключены.\n\n"
-        "Ты больше не будешь получать напоминания.",
-        reply_markup=None
-    )
+    await set_reminder_settings(callback.from_user.id, enabled=False)
+    await callback.message.edit_text("🔕 Напоминания выключены.")
     await callback.answer()
 
 
