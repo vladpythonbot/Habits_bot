@@ -289,10 +289,13 @@ async def my_habits(message: types.Message):
 
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_name_{habit_id}"),
-            InlineKeyboardButton(text="🔄 Обнулить", callback_data=f"reset_{habit_id}")
+            InlineKeyboardButton(text="🔄 Обнулить", callback_data=f"reset_{habit_id}"),
+            InlineKeyboardButton(text="🗑 Удалить привычку")
         ])
 
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+
+@router.callback_query(F.data.startswith("delete_"))
 
 
 @router.callback_query(F.data.startswith("edit_name_"))
