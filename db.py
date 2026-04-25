@@ -2,8 +2,8 @@
 import aiosqlite
 from datetime import datetime
 
-DB_NAME = "habits.db"
 
+DB_NAME = "habits.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:

@@ -290,8 +290,7 @@ async def my_habits(message: types.Message):
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_name_{habit_id}"),
             InlineKeyboardButton(text="🔄 Обнулить", callback_data=f"reset_{habit_id}"),
-            InlineKeyboardButton(text="🗑 Удалить привычку")
-        ])
+            InlineKeyboardButton(text="🗑 Удалить привычку",callback_data="open_delete_menu")])
 
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
 
@@ -438,6 +437,7 @@ async def reminder_off(callback: types.CallbackQuery):
 
 @router.message(Form.waiting_new_name)
 async def save_new_name(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
     new_name = message.text.strip()
 
     if len(new_name) < 2:
@@ -452,7 +452,7 @@ async def save_new_name(message: types.Message, state: FSMContext):
         await state.clear()
         return
 
-    await update_habit_name(habit_id, new_name)
+    await update_habit_name(user_id,habit_id, new_name)
 
     await message.answer(
         f"✅ Название изменено на:\n"
@@ -490,8 +490,7 @@ async def set_reminder_time(callback: types.CallbackQuery):
     await callback.answer()
 
 
-
-@router.message(F.text == "🗑 Удалить привычку")
+@router.callback_query(F.data == "open_delete_menu")
 async def delete_habit_start(message: types.Message):
     habits=await get_user_habits(message.from_user.id)
 
