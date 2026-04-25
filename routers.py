@@ -11,7 +11,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemo
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot import bot
-from db import save_habit, get_user_habits, mark_habit_completed, delete_habit_from_db,get_reminder_settings,set_reminder_settings,update_habit_name
+from db import save_habit, get_user_habits, mark_habit_completed, delete_habit_from_db,get_reminder_settings,set_reminder_settings,update_habit_name,reset_habit_streak
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -264,9 +264,14 @@ async def process_mark_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
+
 @router.message(F.text == "📋 Мои привычки")
 async def my_habits(message: types.Message):
-    habits = await get_user_habits(message.from_user.id)
+    await show_habits(message, message.from_user.id)
+
+
+async def show_habits(message: types.Message, user_id: int):
+    habits = await get_user_habits(user_id)
 
     if not habits:
         await message.answer("У тебя пока нет привычек.", reply_markup=empty_keyboard)
@@ -276,7 +281,8 @@ async def my_habits(message: types.Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
 
     for habit in habits:
-        habit_id, habit_name, created_date, streak, total_completed, last_date,goal_days = habit
+        habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
+
         try:
             created = datetime.strptime(created_date, "%Y-%m-%d")
             days_since = (datetime.now() - created).days
@@ -290,11 +296,10 @@ async def my_habits(message: types.Message):
         keyboard.inline_keyboard.append([
             InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_name_{habit_id}"),
             InlineKeyboardButton(text="🔄 Обнулить", callback_data=f"reset_{habit_id}"),
-            InlineKeyboardButton(text="🗑 Удалить привычку",callback_data="open_delete_menu")])
+            InlineKeyboardButton(text="🗑 Удалить привычку", callback_data=f"delete_{habit_id}")
+        ])
 
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
-
-@router.callback_query(F.data.startswith("delete_"))
 
 
 @router.callback_query(F.data.startswith("edit_name_"))
@@ -326,13 +331,11 @@ async def statistics(message: types.Message):
         return
 
     total_habits=len(habits)
-    total_completed = sum(h[4] for h in habits)
     max_streak=max((h[3] for h in habits),default=0)
 
     text = (
             f"📊 <b>Твоя статистика</b>\n\n"
             f"Привычек всего: <b>{total_habits}</b>\n"
-            f"Дней выполнено всего: <b>{total_completed}</b>\n"
             f"Лучшая цепочка: <b>{max_streak} дней</b>\n\n"
             f"<b>По привычкам:</b>\n\n"
         )
@@ -343,7 +346,7 @@ async def statistics(message: types.Message):
         percent = round((total_completed / goal_days) * 100) if goal_days > 0 else 0
 
         text += f"• <b>{habit_name}</b> ({streak}/{goal_days})\n"
-        text += f"   Выполнено: {total_completed} раз ({percent}% от цели)\n\n"
+        text += f"   Выполнено: {percent}% от цели\n\n"
 
     await message.answer(text, parse_mode="HTML")
 
@@ -509,6 +512,36 @@ async def delete_habit_start(message: types.Message):
     await message.answer("Выбери привычку для удаления:", reply_markup=kb)
 
 
+@router.callback_query(F.data.startswith("reset_"))
+async def process_reset_callback(callback: types.CallbackQuery):
+    try:
+        habit_id = int(callback.data.split("_")[1])
+        user_id = callback.from_user.id
+
+        habits = await get_user_habits(user_id)
+
+        habit = next((h for h in habits if h[0] == habit_id), None)
+
+        if habit:
+            habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
+        else:
+            habit_name = "привычке"
+
+        success = await reset_habit_streak(user_id, habit_id)
+
+        if success:
+            await callback.message.answer(f"✅ Прогресс по привычке {habit_name} обнулен!")
+            await show_habits(callback.message, user_id)
+        else:
+            await callback.message.answer("❌ Не удалось обнулить привычку.")
+
+    except Exception as e:
+        logger.error(f"Ошибка обнуления: {e}")
+        await callback.message.edit_text("❌ Произошла ошибка.")
+
+    await callback.answer()
+
+
 @router.callback_query(F.data.startswith("delete_"))
 async def process_delete_callback(callback: types.CallbackQuery):
     try:
@@ -518,12 +551,14 @@ async def process_delete_callback(callback: types.CallbackQuery):
         success = await delete_habit_from_db(user_id, habit_id)
 
         if success:
-            await callback.message.edit_text("🗑 Привычка успешно удалена.")
+            await callback.message.answer("🗑 Привычка удалена!")
+            await show_habits(callback.message, user_id)
         else:
-            await callback.message.edit_text("❌ Не удалось удалить привычку.")
+            await callback.message.answer("❌ Не удалось удалить привычку.")
+
     except Exception as e:
         logger.error(f"Ошибка удаления: {e}")
-        await callback.message.edit_text("❌ Произошла ошибка.")
+        await callback.message.answer("❌ Произошла ошибка.")
 
     await callback.answer()
 
