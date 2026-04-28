@@ -29,9 +29,9 @@ main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🌟 Добавить привычку")],
         [KeyboardButton(text="✅ Отметить сегодня")],
-        [KeyboardButton(text="📋 Мои привычки")],
         [KeyboardButton(text="📊 Статистика")],
-        [KeyboardButton(text="🔔 Напоминания")]
+        [KeyboardButton(text="🔔 Напоминания")],
+        [KeyboardButton(text="📋 Мои привычки")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
@@ -175,6 +175,7 @@ async def process_custom_goal(message: types.Message, state: FSMContext):
 
     await state.clear()
 
+
 @router.message(F.text == "✅ Отметить сегодня")
 async def mark_today(message: types.Message):
     habits = await get_user_habits(message.from_user.id)
@@ -264,8 +265,7 @@ async def process_mark_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-
-@router.message(F.text == "📋 Мои привычки")
+@router.message(F.text == "📋 Настройка")
 async def my_habits(message: types.Message):
     await show_habits(message, message.from_user.id)
 
