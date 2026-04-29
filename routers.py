@@ -130,7 +130,7 @@ async def process_goal_callback(callback: types.CallbackQuery, state: FSMContext
         parse_mode="HTML")
 
     await callback.message.answer(
-        "Выбери действие:",
+        "Теперь отмечай её каждый день!:",
         reply_markup=main_keyboard
     )
 
