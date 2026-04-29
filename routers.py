@@ -188,7 +188,7 @@ async def mark_today(message: types.Message):
     unmarked_habits = [habit for habit in habits if habit[5]!=today]
 
     if not unmarked_habits:
-        await message.answer("🎉 Все привычки на сегодня уже отмечены!\n<b>Молодец!<b>",parse_mode="HTML")
+        await message.answer("🎉 Все привычки на сегодня уже отмечены!\n<b>Молодец!</b>",parse_mode="HTML")
         return
 
     kb = InlineKeyboardMarkup(inline_keyboard=[]
@@ -265,42 +265,54 @@ async def process_mark_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
-@router.message(F.text == "📋 Настройка")
+@router.message(F.text == "📋 Мои привычки")
 async def my_habits(message: types.Message):
     await show_habits(message, message.from_user.id)
 
 
-async def show_habits(message: types.Message, user_id: int):
+async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
     habits = await get_user_habits(user_id)
 
     if not habits:
-        await message.answer("У тебя пока нет привычек.", reply_markup=empty_keyboard)
-        return
+        text = "У тебя пока нет привычек."
+        kb = InlineKeyboardMarkup(inline_keyboard=[])  # ✅
+    else:
+        text = "📋 <b>Твои привычки:</b>\n\n"
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
 
-    text = "📋 <b>Твои привычки:</b>\n\n"
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+        for habit in habits:
+            habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
 
-    for habit in habits:
-        habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
+            try:
+                created = datetime.strptime(created_date, "%Y-%m-%d")
+                days_since = (datetime.now() - created).days
+                days_text = f"уже {days_since} дней"
+            except:
+                days_text = ""
 
-        try:
-            created = datetime.strptime(created_date, "%Y-%m-%d")
-            days_since = (datetime.now() - created).days
-            days_text = f"уже {days_since} дней"
-        except:
-            days_text = ""
+            text += f"• <b>{habit_name}</b> ({streak}/{goal_days})\n"
+            if days_text:
+                text += f"   {days_text}\n"
+            text += "\n"
 
-        text += f"• <b>{habit_name}</b> ({streak}/{goal_days})\n"
-        text += f"   {days_text}\n\n"
+            kb.inline_keyboard.append([
+                InlineKeyboardButton(text="✏️", callback_data=f"edit_name_{habit_id}"),
+                InlineKeyboardButton(text="🔄", callback_data=f"reset_{habit_id}"),
+                InlineKeyboardButton(text="🗑", callback_data=f"delete_{habit_id}")
+            ])
 
-        keyboard.inline_keyboard.append([
-            InlineKeyboardButton(text="✏️ Изменить", callback_data=f"edit_name_{habit_id}"),
-            InlineKeyboardButton(text="🔄 Обнулить", callback_data=f"reset_{habit_id}"),
-            InlineKeyboardButton(text="🗑 Удалить привычку", callback_data=f"delete_{habit_id}")
-        ])
-
-    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
-
+    if isinstance(obj, types.CallbackQuery):
+        await obj.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    else:
+        await obj.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
 
 @router.callback_query(F.data.startswith("edit_name_"))
 async def start_edit_name(callback: types.CallbackQuery, state: FSMContext):
@@ -493,25 +505,6 @@ async def set_reminder_time(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "open_delete_menu")
-async def delete_habit_start(message: types.Message):
-    habits=await get_user_habits(message.from_user.id)
-
-    if not habits:
-        await message.answer("У тебя пока нет привычек для удаления.",reply_markup=empty_keyboard)
-        return
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[])
-
-    for habit in habits:
-        habit_id, habit_name, _, _, _, _, _ = habit
-        kb.inline_keyboard.append([
-            InlineKeyboardButton(text=f"🗑 {habit_name}", callback_data=f"delete_{habit_id}")
-        ])
-
-    await message.answer("Выбери привычку для удаления:", reply_markup=kb)
-
-
 @router.callback_query(F.data.startswith("reset_"))
 async def process_reset_callback(callback: types.CallbackQuery):
     try:
@@ -544,23 +537,12 @@ async def process_reset_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("delete_"))
 async def process_delete_callback(callback: types.CallbackQuery):
-    try:
-        habit_id = int(callback.data.split("_")[1])
-        user_id = callback.from_user.id
+    habit_id = int(callback.data.split("_")[1])
+    user_id = callback.from_user.id
 
-        success = await delete_habit_from_db(user_id, habit_id)
-
-        if success:
-            await callback.message.answer("🗑 Привычка удалена!")
-            await show_habits(callback.message, user_id)
-        else:
-            await callback.message.answer("❌ Не удалось удалить привычку.")
-
-    except Exception as e:
-        logger.error(f"Ошибка удаления: {e}")
-        await callback.message.answer("❌ Произошла ошибка.")
-
-    await callback.answer()
+    await delete_habit_from_db(user_id, habit_id)
+    await callback.answer("🗑 Привычка удалена")
+    await show_habits(callback, user_id)
 
 
 async def send_daily_reminder_to_user(user_id: int):
