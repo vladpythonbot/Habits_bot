@@ -130,7 +130,7 @@ async def process_goal_callback(callback: types.CallbackQuery, state: FSMContext
         parse_mode="HTML")
 
     await callback.message.answer(
-        "Теперь отмечай её каждый день!:",
+        "Теперь отмечай её каждый день!",
         reply_markup=main_keyboard
     )
 
@@ -275,7 +275,7 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
 
     if not habits:
         text = "У тебя пока нет привычек."
-        kb = InlineKeyboardMarkup(inline_keyboard=[])  # ✅
+        kb = InlineKeyboardMarkup(inline_keyboard=[])
     else:
         text = "📋 <b>Твои привычки:</b>\n\n"
         kb = InlineKeyboardMarkup(inline_keyboard=[])
@@ -512,27 +512,43 @@ async def process_reset_callback(callback: types.CallbackQuery):
         user_id = callback.from_user.id
 
         habits = await get_user_habits(user_id)
-
         habit = next((h for h in habits if h[0] == habit_id), None)
-
-        if habit:
-            habit_id, habit_name, created_date, streak, total_completed, last_date, goal_days = habit
-        else:
-            habit_name = "привычке"
+        habit_name = habit[1] if habit else "привычке"
 
         success = await reset_habit_streak(user_id, habit_id)
 
         if success:
-            await callback.message.answer(f"✅ Прогресс по привычке {habit_name} обнулен!")
-            await show_habits(callback.message, user_id)
+
+            quotes = [
+                ("Неважно, как медленно ты идёшь, главное — ты не останавливаешься.", "Конфуций"),
+                ("Путь в тысячу миль начинается с первого шага.", "Лао-цзы"),
+                ("Тот, кто не ошибается, не делает ничего нового.", "Альберт Эйнштейн"),
+                ("Успех — это идти от неудачи к неудаче, не теряя энтузиазма.", "Уинстон Черчилль"),
+                ("Каждый новый день — это шанс начать всё заново.", "Неизвестный"),
+                ("Падать — это не позор. Позор — не подняться.", "Неизвестный"),
+                ("Сила не в том, чтобы никогда не падать, а в том, чтобы каждый раз подниматься.", "Неизвестный"),
+                ("Ты сильнее, чем думаешь.", "Неизвестный"),
+                ("Настоящая сила — в умении подняться после падения.", "Неизвестный"),
+                ("Завтра ты будешь лучше, чем сегодня.", "Неизвестный")
+            ]
+
+            import random
+            quote_text, author = random.choice(quotes)
+
+            alert_text = f"🔄 Цепочка по «{habit_name}» обнулена\n\n" \
+                         f"✨ {quote_text}\n" \
+                         f"— {author}"
+
+            await callback.answer(alert_text, show_alert=True)
+
+            await show_habits(callback, user_id)
+
         else:
-            await callback.message.answer("❌ Не удалось обнулить привычку.")
+            await callback.answer("❌ Не удалось обнулить привычку", show_alert=True)
 
     except Exception as e:
         logger.error(f"Ошибка обнуления: {e}")
-        await callback.message.edit_text("❌ Произошла ошибка.")
-
-    await callback.answer()
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("delete_"))
