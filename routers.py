@@ -535,7 +535,7 @@ async def process_reset_callback(callback: types.CallbackQuery):
             import random
             quote_text, author = random.choice(quotes)
 
-            alert_text = f"🔄 Цепочка по «{habit_name}» обнулена\n\n" \
+            alert_text = f"🔄 Цепочка по привычке «{habit_name}» обнулена\n\n" \
                          f"✨ {quote_text}\n" \
                          f"— {author}"
 
@@ -599,7 +599,6 @@ async def send_daily_reminder_to_user(user_id: int):
 
 
 async def daily_reminder():
-    """Отправляет ежедневное напоминание с неотмеченными привычками"""
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
     current_hour = now.hour
 

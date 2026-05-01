@@ -7,7 +7,6 @@ from bot import bot, dp
 from routers import router
 from db import init_db
 from routers import daily_reminder
-from tasks import daily_reminder_and_reset
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
