@@ -621,4 +621,3 @@ async def daily_reminder():
 
     except Exception as e:
         logger.error(f"Ошибка daily_reminder: {e}", exc_info=True)
-
