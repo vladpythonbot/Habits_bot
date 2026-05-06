@@ -79,7 +79,9 @@ async def mark_habit_completed(user_id: int, habit_id: int):
 
         if new_streak >= goal_days:
             achieved_goal = True
-            if goal_days < 30:
+            if goal_days < 7:
+                new_goal = 7
+            elif goal_days < 30:
                 new_goal = 30
             elif goal_days < 60:
                 new_goal = 60

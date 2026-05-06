@@ -226,7 +226,7 @@ async def process_mark_callback(callback: types.CallbackQuery):
 
         if not unmarked_habits:
             await callback.message.edit_text(
-                "🎉 Отлично! Все привычки на сегодня отмечены!\nМолодец! 🔥",
+                "🎉 Отлично! Все привычки на сегодня отмечены!\n<b>Молодец</b>! 🔥",
                 reply_markup=None
             )
             await callback.answer("✅ Всё отмечено!")
@@ -572,7 +572,7 @@ async def send_daily_reminder_to_user(user_id: int):
     if not unmarked_habits:
         await bot.send_message(
             user_id,
-            "🎉 Отлично! Сегодня все привычки уже отмечены!\nМолодец 🔥",
+            "🎉 Отлично! Сегодня все привычки уже отмечены!\n<b>Молодец</b> 🔥",
             parse_mode="HTML"
         )
         return
