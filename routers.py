@@ -228,8 +228,7 @@ async def process_mark_callback(callback: types.CallbackQuery):
         if goal_info and goal_info[0]:
             _, habit_name, new_streak, new_goal = goal_info
             congrats = (
-                f"🎉 <b>Цель достигнута!</b>\n\n"
-                f"Привычка: <b>{habit_name}</b>\n"
+                f"🎉 <b>Цель по привычке {habit_name} достигнута!</b>\n\n"
                 f"Следующая цель: <b>{new_goal} дней</b> 🔥\n\n"
             )
 
