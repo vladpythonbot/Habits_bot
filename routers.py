@@ -230,7 +230,6 @@ async def process_mark_callback(callback: types.CallbackQuery):
             congrats = (
                 f"🎉 <b>Цель достигнута!</b>\n\n"
                 f"Привычка: <b>{habit_name}</b>\n"
-                f"Новая цепочка: <b>{new_streak} дней</b>\n"
                 f"Следующая цель: <b>{new_goal} дней</b> 🔥\n\n"
             )
 
