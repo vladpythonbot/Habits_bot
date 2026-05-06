@@ -207,7 +207,6 @@ async def mark_today(message: types.Message):
         reply_markup=kb
     )
 
-
 @router.callback_query(F.data.startswith("mark_"))
 async def process_mark_callback(callback: types.CallbackQuery):
     try:
@@ -217,52 +216,52 @@ async def process_mark_callback(callback: types.CallbackQuery):
         success, goal_info = await mark_habit_completed(user_id, habit_id)
 
         if not success:
-            await callback.answer("⚠️ Эта привычка уже отмечена сегодня", show_alert=True)
+            await callback.answer("⚠️ Уже отмечено сегодня", show_alert=True)
             return
 
         habits = await get_user_habits(user_id)
         today = datetime.now().strftime("%Y-%m-%d")
         unmarked_habits = [h for h in habits if h[5] != today]
 
-        if not unmarked_habits:
-            await callback.message.edit_text(
-                "🎉 Отлично! Все привычки на сегодня отмечены!\n<b>Молодец</b>! 🔥",parse_mode="HTML",
-                reply_markup=None
-            )
-            await callback.answer("✅ Всё отмечено!")
-            return
+        congrats = ""
 
-        congrats_text = ""
         if goal_info and goal_info[0]:
             _, habit_name, new_streak, new_goal = goal_info
-            congrats_text = (
+            congrats = (
                 f"🎉 <b>Цель достигнута!</b>\n\n"
                 f"Привычка: <b>{habit_name}</b>\n"
                 f"Новая цепочка: <b>{new_streak} дней</b>\n"
                 f"Следующая цель: <b>{new_goal} дней</b> 🔥\n\n"
             )
 
-        kb = InlineKeyboardMarkup(inline_keyboard=[])
-        for habit in unmarked_habits:
-            h_id, h_name, _, streak, _, _, g_days = habit
-            btn_text = f"{h_name} ({streak}/{g_days} 🔥)"
-            kb.inline_keyboard.append([
-                InlineKeyboardButton(text=btn_text, callback_data=f"mark_{h_id}")
-            ])
+        if not unmarked_habits:
+            await callback.message.edit_text(
+                congrats + "Все привычки на сегодня отмечены!\nОтличная работа! 🔥",
+                parse_mode="HTML",
+                reply_markup=None
+            )
+        else:
+            kb = InlineKeyboardMarkup(inline_keyboard=[])
+            for habit in unmarked_habits:
+                h_id, h_name, _, streak, _, _, g_days = habit
+                kb.inline_keyboard.append([
+                    InlineKeyboardButton(
+                        text=f"{h_name} ({streak}/{g_days} 🔥)",
+                        callback_data=f"mark_{h_id}"
+                    )
+                ])
 
-        await callback.message.edit_text(
-            f"{congrats_text}"
-            f"⏰ <b>Напоминание о привычках</b>\n\n"
-            f"Отметь, что ты сделал сегодня:",
-            parse_mode="HTML",
-            reply_markup=kb
-        )
+            await callback.message.edit_text(
+                congrats + "✅ Отметь остальные привычки, которые ты выполнил сегодня:",
+                parse_mode="HTML",
+                reply_markup=kb
+            )
 
-        await callback.answer("✅ Отмечено!")
+        await callback.answer("✅ Отмечено")
 
     except Exception as e:
-        logger.error(f"Ошибка при отметке привычки: {e}", exc_info=True)
-        await callback.answer("❌ Произошла ошибка", show_alert=True)
+        logger.error(f"Ошибка отметки: {e}")
+        await callback.answer("❌ Ошибка", show_alert=True)
 
 
 @router.message(F.text == "📋 Мои привычки")
