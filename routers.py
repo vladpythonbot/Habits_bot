@@ -226,7 +226,7 @@ async def process_mark_callback(callback: types.CallbackQuery):
 
         if not unmarked_habits:
             await callback.message.edit_text(
-                "🎉 Отлично! Все привычки на сегодня отмечены!\n<b>Молодец</b>! 🔥",
+                "🎉 Отлично! Все привычки на сегодня отмечены!\n<b>Молодец</b>! 🔥",parse_mode="HTML",
                 reply_markup=None
             )
             await callback.answer("✅ Всё отмечено!")
