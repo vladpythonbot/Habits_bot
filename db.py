@@ -3,7 +3,7 @@ import aiosqlite
 from datetime import datetime
 
 
-DB_NAME = "habits.db"
+DB_NAME = "/app/habits.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -130,7 +130,7 @@ async def update_habit_name(user_id: int, habit_id: int, new_name: str):
         await db.commit()
 
         rowcount=cursor.rowcount
-        return cursor.rowcount>0
+        return rowcount>0
 
 
 async def get_all_users_with_habits():
