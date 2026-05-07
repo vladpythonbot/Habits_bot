@@ -564,6 +564,7 @@ async def send_daily_reminder_to_user(user_id: int):
         return
 
     today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now().strftime("%H:%M")
     unmarked_habits = [h for h in habits if h[5] != today]
 
     if not unmarked_habits:
@@ -586,7 +587,7 @@ async def send_daily_reminder_to_user(user_id: int):
         await bot.send_message(
             chat_id=user_id,
             text=f"⏰ <b>Напоминание о привычках</b>\n\n"
-                 f"Сейчас {datetime.now().strftime('%H:%M')}\n\n"
+                 f"Сейчас {now}\n\n"
                  f"Отметь, что ты сделал сегодня:",
             parse_mode="HTML",
             reply_markup=kb
