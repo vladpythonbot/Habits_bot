@@ -3,7 +3,7 @@ import aiosqlite
 from datetime import datetime
 
 
-DB_NAME = "/app/habits.db"
+DB_NAME = "/data/habits.db"
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
