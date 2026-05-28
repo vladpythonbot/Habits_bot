@@ -1,11 +1,12 @@
 # db.py
+import os
 from pathlib import Path
 from datetime import datetime, timedelta
 
 import aiosqlite
 
 
-DB_NAME = str(Path(__file__).with_name("habits.db"))
+DB_NAME = os.getenv("DB_PATH", str(Path(__file__).with_name("habits.db")))
 
 
 def today_str() -> str:
@@ -17,6 +18,8 @@ def yesterday_str() -> str:
 
 
 async def init_db():
+    Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
+
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS habits (
