@@ -11,12 +11,20 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemo
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot import bot
-from db import save_habit, get_user_habits, mark_habit_completed, delete_habit_from_db,get_reminder_settings,set_reminder_settings,update_habit_name,reset_habit_streak
+from db import (
+    DB_NAME,
+    save_habit,
+    get_user_habits,
+    mark_habit_completed,
+    delete_habit_from_db,
+    get_reminder_settings,
+    set_reminder_settings,
+    update_habit_name,
+    reset_habit_streak,
+)
 
 router = Router()
 logger = logging.getLogger(__name__)
-
-DB_NAME = "habits.db"
 
 class Form(StatesGroup):
     waiting_habit_name = State()
@@ -493,8 +501,8 @@ async def reminder_time_start(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("time_"))
 async def set_reminder_time(callback: types.CallbackQuery):
-    hour = callback.data.split("_")[1]
-    time_str=f"{hour:02d}:00"
+    hour = int(callback.data.split("_")[1])
+    time_str = f"{hour:02d}:00"
 
     await set_reminder_settings(callback.from_user.id,True, time_str)
 
@@ -565,7 +573,7 @@ async def send_daily_reminder_to_user(user_id: int):
 
 
     Now = datetime.now(ZoneInfo("Europe/Kyiv"))
-    today = Now.strftime("%Y/%m/%d")
+    today = Now.strftime("%Y-%m-%d")
     current_hour = Now.hour
     unmarked_habits = [h for h in habits if h[5] != today]
 

@@ -1,9 +1,12 @@
 # db.py
-import aiosqlite
+from pathlib import Path
 from datetime import datetime
 
+import aiosqlite
 
-DB_NAME = "/data/habits.db"
+
+DB_NAME = str(Path(__file__).with_name("habits.db"))
+
 
 async def init_db():
     async with aiosqlite.connect(DB_NAME) as db:
@@ -21,7 +24,13 @@ async def init_db():
             )
         """)
 
-        await init_reminder_table()
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS reminder_settings (
+                user_id INTEGER PRIMARY KEY,
+                enabled BOOLEAN DEFAULT 0,
+                reminder_time TEXT DEFAULT "15:00"
+            )
+        """)
 
         await db.commit()
 
