@@ -1,11 +1,19 @@
 # db.py
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import aiosqlite
 
 
 DB_NAME = str(Path(__file__).with_name("habits.db"))
+
+
+def today_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def yesterday_str() -> str:
+    return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 async def init_db():
@@ -49,6 +57,8 @@ async def save_habit(user_id: int, habit_name: str, goal_days: int = 30):
 
 
 async def get_user_habits(user_id: int):
+    await refresh_missed_streaks(user_id)
+
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
             SELECT id, habit_name, created_date, streak, total_completed, last_completed_date, goal_days
@@ -60,7 +70,7 @@ async def get_user_habits(user_id: int):
 
 
 async def mark_habit_completed(user_id: int, habit_id: int):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_str()
 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
@@ -78,26 +88,11 @@ async def mark_habit_completed(user_id: int, habit_id: int):
         if last_completed == today:
             return False, None
 
-        from datetime import timedelta
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday = yesterday_str()
 
         new_streak = 1 if last_completed != yesterday else current_streak + 1
 
-        achieved_goal = False
-        new_goal = goal_days
-
-        if new_streak >= goal_days:
-            achieved_goal = True
-            if goal_days < 7:
-                new_goal = 7
-            elif goal_days < 30:
-                new_goal = 30
-            elif goal_days < 60:
-                new_goal = 60
-            elif goal_days < 100:
-                new_goal = 100
-            else:
-                new_goal = goal_days + 50
+        achieved_goal = new_streak >= goal_days
 
         await db.execute("""
             UPDATE habits 
@@ -106,15 +101,15 @@ async def mark_habit_completed(user_id: int, habit_id: int):
                 total_completed = total_completed + 1,
                 goal_days = ?
             WHERE id = ? AND user_id = ?
-        """, (today, new_streak, new_goal, habit_id, user_id))
+        """, (today, new_streak, goal_days, habit_id, user_id))
 
         await db.commit()
 
-        return True, (achieved_goal, habit_name, new_streak, new_goal)
+        return True, (achieved_goal, habit_name, new_streak, goal_days)
 
 
 async def reset_habit_streak(user_id: int, habit_id: int):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = today_str()
 
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
@@ -159,6 +154,20 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
     return True
 
 
+async def refresh_missed_streaks(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            UPDATE habits
+            SET streak = 0,
+                reset_date = ?
+            WHERE user_id = ?
+              AND streak > 0
+              AND last_completed_date IS NOT NULL
+              AND last_completed_date < ?
+        """, (today_str(), user_id, yesterday_str()))
+        await db.commit()
+
+
 async def set_reminder_settings(user_id: int, enabled: bool, reminder_time: str = "15:00"):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
@@ -180,10 +189,39 @@ async def get_reminder_settings(user_id: int):
         """, (user_id,))
         row = await cursor.fetchone()
         if row:
-            return {"enabled": row[0], "reminder_time": row[1]}
+            return {"enabled": bool(row[0]), "reminder_time": row[1] or "15:00"}
 
         await set_reminder_settings(user_id, True, reminder_time="15:00")
         return {"enabled": True, "reminder_time": "15:00"}
+
+
+async def get_users_by_reminder_time(reminder_time: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT user_id, reminder_time
+            FROM reminder_settings
+            WHERE enabled = 1
+        """)
+        rows = await cursor.fetchall()
+
+    return [
+        user_id
+        for user_id, times in rows
+        if reminder_time in parse_reminder_times(times)
+    ]
+
+
+def parse_reminder_times(value: str | None) -> list[str]:
+    if not value:
+        return ["15:00"]
+
+    times = []
+    for item in value.split(","):
+        item = item.strip()
+        if item:
+            times.append(item)
+
+    return sorted(set(times)) or ["15:00"]
 
 
 async def init_reminder_table():
