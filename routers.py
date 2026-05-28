@@ -18,9 +18,13 @@ from aiogram.types import (
 
 from bot import bot
 from db import (
+    ACHIEVEMENTS,
     delete_habit_from_db,
+    get_achievements,
     get_reminder_settings,
     get_user_habits,
+    get_user_level,
+    get_user_stats,
     get_users_by_reminder_time,
     mark_habit_completed,
     parse_reminder_times,
@@ -46,8 +50,8 @@ class Form(StatesGroup):
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="Сегодня"), KeyboardButton(text="Привычки")],
-        [KeyboardButton(text="Настройки")],
+        [KeyboardButton(text="🟢 Сегодня"), KeyboardButton(text="🔵 Статистика")],
+        [KeyboardButton(text="🟣 Привычки"), KeyboardButton(text="⚙️ Настройки")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
@@ -62,36 +66,114 @@ def days_word(value: int) -> str:
     return "дней"
 
 
-def progress_bar(done: int, total: int, width: int = 8) -> str:
-    if total <= 0:
-        return "—"
+def progress_bar(percent: int, width: int = 10) -> str:
+    filled = max(0, min(width, round(width * percent / 100)))
+    color = "🟩" if percent >= 80 else "🟨" if percent >= 45 else "🟥"
+    return color * filled + "⬜" * (width - filled)
 
-    filled = round(width * done / total)
-    return "●" * filled + "○" * (width - filled)
+
+def xp_bar(xp: int, next_level_xp: int) -> str:
+    previous_level_xp = max(0, next_level_xp - 100)
+    current = xp - previous_level_xp
+    percent = round(current / 100 * 100)
+    return progress_bar(percent)
 
 
 def habit_name(habit) -> str:
     return escape(habit[1])
 
 
-def main_summary(habits) -> str:
+def daily_status(done: int, total: int) -> tuple[str, int]:
+    if total == 0:
+        return "⚪", 0
+
+    percent = round(done / total * 100)
+    if percent == 100:
+        return "🟢", percent
+    if percent >= 50:
+        return "🟡", percent
+    return "🔴", percent
+
+
+def render_heatmap(stats: dict) -> str:
+    habits_count = max(stats["habits_count"], 1)
+    cells = []
+
+    for date in stats["dates"]:
+        done = stats["daily_done"].get(date, 0)
+        ratio = done / habits_count
+        if done == 0:
+            cells.append("⬜")
+        elif ratio < 0.34:
+            cells.append("🟥")
+        elif ratio < 0.67:
+            cells.append("🟨")
+        else:
+            cells.append("🟩")
+
+    rows = ["".join(cells[i:i + 7]) for i in range(0, len(cells), 7)]
+    return "\n".join(rows)
+
+
+def render_week_graph(stats: dict) -> str:
+    dates = stats["dates"][-7:]
+    habits_count = max(stats["habits_count"], 1)
+    lines = []
+
+    for date in dates:
+        done = stats["daily_done"].get(date, 0)
+        percent = round(done / habits_count * 100)
+        day = datetime.strptime(date, "%Y-%m-%d").strftime("%d.%m")
+        lines.append(f"{day} {progress_bar(percent, 6)} {done}/{habits_count}")
+
+    return "\n".join(lines)
+
+
+def unlocked_achievement_text(achievements: list[dict]) -> str:
+    if not achievements:
+        return ""
+
+    lines = ["\n\n🟣 <b>Новые ачивки</b>"]
+    for item in achievements:
+        lines.append(f"🏆 <b>{escape(item['title'])}</b> · {escape(item['description'])}")
+    return "\n".join(lines)
+
+
+async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
+    if isinstance(obj, types.CallbackQuery):
+        await obj.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
+        await obj.answer()
+    else:
+        await obj.answer(text, parse_mode="HTML", reply_markup=reply_markup)
+
+
+async def main_summary(user_id: int) -> str:
+    habits = await get_user_habits(user_id)
+    level = await get_user_level(user_id)
+
     if not habits:
-        return "Пока привычек нет. Добавь первую — и начнём спокойно."
+        return (
+            "🟣 <b>HabitFlow</b>\n"
+            "Пока привычек нет. Добавь первую — и начнём спокойно."
+        )
 
     today = today_str()
     yesterday = yesterday_str()
     done = sum(1 for h in habits if h[5] == today)
-    best_streak = max((h[3] for h in habits), default=0)
     at_risk = [h for h in habits if h[5] == yesterday and h[3] > 0]
+    best_streak = max((h[3] for h in habits), default=0)
+    status, percent = daily_status(done, len(habits))
 
     lines = [
-        f"<b>Сегодня</b>: {done}/{len(habits)}",
-        progress_bar(done, len(habits)),
-        f"Лучшая серия: <b>{best_streak} {days_word(best_streak)}</b>",
+        "🟣 <b>HabitFlow</b>",
+        f"{status} Сегодня: <b>{done}/{len(habits)}</b> · {percent}%",
+        progress_bar(percent),
+        f"🔥 Лучшая серия: <b>{best_streak} {days_word(best_streak)}</b>",
+        f"⭐ Уровень: <b>{level['level']}</b> · XP {level['xp']}/{level['next_level_xp']}",
     ]
 
     if at_risk:
-        lines.append(f"Под угрозой: <b>{len(at_risk)}</b>")
+        lines.append(f"🟡 Под угрозой: <b>{len(at_risk)}</b>")
 
     return "\n".join(lines)
 
@@ -113,96 +195,162 @@ def goal_keyboard() -> InlineKeyboardMarkup:
 
 
 def habit_actions_keyboard(habits) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="+ Добавить", callback_data="add_habit")]]
+    rows = [[InlineKeyboardButton(text="➕ Добавить привычку", callback_data="add_habit")]]
 
     for habit in habits:
         habit_id = habit[0]
         rows.append([
-            InlineKeyboardButton(text=f"✎ {habit[1]}", callback_data=f"edit_{habit_id}"),
-            InlineKeyboardButton(text="Сброс", callback_data=f"reset_{habit_id}"),
-            InlineKeyboardButton(text="Удалить", callback_data=f"delete_{habit_id}"),
+            InlineKeyboardButton(text=f"✏️ {habit[1][:18]}", callback_data=f"edit_{habit_id}"),
+            InlineKeyboardButton(text="🔄 Сброс", callback_data=f"reset_{habit_id}"),
+            InlineKeyboardButton(text="🗑", callback_data=f"delete_ask_{habit_id}"),
         ])
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
-    if isinstance(obj, types.CallbackQuery):
-        await obj.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
-        await obj.answer()
-    else:
-        await obj.answer(text, parse_mode="HTML", reply_markup=reply_markup)
-
-
 @router.message(Command("start"))
 async def start(message: types.Message):
     await get_reminder_settings(message.from_user.id)
-    habits = await get_user_habits(message.from_user.id)
-
     await message.answer(
-        "Привет. Я помогу держать привычки без шума.\n\n" + main_summary(habits),
+        await main_summary(message.from_user.id),
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
 
 
-@router.message(F.text == "Сегодня")
+@router.message(Command("stats"))
+@router.message(F.text.in_(["🔵 Статистика", "Статистика"]))
+async def statistics(message: types.Message):
+    await show_statistics(message, message.from_user.id)
+
+
+async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int):
+    stats = await get_user_stats(user_id, days=30)
+    level = await get_user_level(user_id)
+    achievements = await get_achievements(user_id)
+
+    if stats["habits_count"] == 0:
+        await answer_or_edit(
+            obj,
+            "🔵 <b>Статистика</b>\n\nПока нечего считать. Добавь первую привычку.",
+            InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ Добавить", callback_data="add_habit")]]),
+        )
+        return
+
+    text = (
+        "🔵 <b>Статистика за 30 дней</b>\n\n"
+        f"✅ Выполнений: <b>{stats['period_completed']}</b> из {stats['possible']}\n"
+        f"📈 Процент: <b>{stats['completion_rate']}%</b>\n"
+        f"{progress_bar(stats['completion_rate'])}\n"
+        f"🔥 Лучшая серия: <b>{stats['best_streak']} {days_word(stats['best_streak'])}</b>\n"
+        f"⚠️ Пропущено: <b>{stats['missed_days']}</b>\n\n"
+        "🟡 <b>Активность</b>\n"
+        f"{render_heatmap(stats)}\n\n"
+        "📊 <b>Последние 7 дней</b>\n"
+        f"{render_week_graph(stats)}\n\n"
+        "🟣 <b>Профиль</b>\n"
+        f"⭐ Уровень <b>{level['level']}</b>\n"
+        f"{xp_bar(level['xp'], level['next_level_xp'])} {level['xp']}/{level['next_level_xp']} XP\n"
+        f"🏆 Ачивки: <b>{len(achievements)}/{len(ACHIEVEMENTS)}</b>"
+    )
+
+    rows = [
+        [InlineKeyboardButton(text="🏆 Ачивки", callback_data="achievements")],
+        [InlineKeyboardButton(text="🟢 Сегодня", callback_data="open_today")],
+    ]
+    await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data == "achievements")
+async def show_achievements(callback: types.CallbackQuery):
+    achievements = await get_achievements(callback.from_user.id)
+    unlocked = {item["code"] for item in achievements}
+
+    text = "🏆 <b>Ачивки</b>\n\n"
+    for code, (title, description) in ACHIEVEMENTS.items():
+        mark = "🟣" if code in unlocked else "⚪"
+        text += f"{mark} <b>{escape(title)}</b>\n{escape(description)}\n\n"
+
+    await answer_or_edit(callback, text, InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔵 Статистика", callback_data="open_stats")]
+    ]))
+
+
+@router.callback_query(F.data == "open_stats")
+async def open_stats(callback: types.CallbackQuery):
+    await show_statistics(callback, callback.from_user.id)
+
+
+@router.message(F.text.in_(["🟢 Сегодня", "Сегодня"]))
 async def today(message: types.Message):
     await show_today(message, message.from_user.id)
+
+
+@router.callback_query(F.data == "open_today")
+async def open_today(callback: types.CallbackQuery):
+    await show_today(callback, callback.from_user.id)
 
 
 async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     habits = await get_user_habits(user_id)
 
     if not habits:
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="+ Добавить привычку", callback_data="add_habit")]
-        ])
-        await answer_or_edit(obj, main_summary(habits), kb)
+        await answer_or_edit(
+            obj,
+            await main_summary(user_id),
+            InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ Добавить привычку", callback_data="add_habit")]]),
+        )
         return
 
     today = today_str()
     yesterday = yesterday_str()
     unmarked = [h for h in habits if h[5] != today]
     rows = []
-
-    text = main_summary(habits)
+    text = await main_summary(user_id)
 
     if not unmarked:
-        text += "\n\nВсё отмечено. Хороший день."
+        text += "\n\n🟢 Всё отмечено. Хороший день."
     else:
-        text += "\n\n<b>Осталось отметить:</b>"
+        text += "\n\n<b>Осталось:</b>"
         for habit in unmarked:
             habit_id, _, _, streak, _, last_date, goal_days = habit
-            risk = " · серия под угрозой" if last_date == yesterday and streak > 0 else ""
-            text += f"\n• <b>{habit_name(habit)}</b> — {streak}/{goal_days}{risk}"
+            risk = " · 🟡 серия под угрозой" if last_date == yesterday and streak > 0 else ""
+            text += f"\n• <b>{habit_name(habit)}</b> · {streak}/{goal_days}{risk}"
             rows.append([
-                InlineKeyboardButton(text=f"Отметить: {habit[1]}", callback_data=f"mark_{habit_id}")
+                InlineKeyboardButton(text=f"✅ {habit[1][:28]}", callback_data=f"mark_{habit_id}")
             ])
 
-    rows.append([InlineKeyboardButton(text="+ Добавить", callback_data="add_habit")])
+    rows.append([InlineKeyboardButton(text="➕ Добавить", callback_data="add_habit")])
     await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.callback_query(F.data.startswith("mark_"))
 async def process_mark_callback(callback: types.CallbackQuery):
     habit_id = int(callback.data.split("_")[1])
-    success, goal_info = await mark_habit_completed(callback.from_user.id, habit_id)
+    success, info = await mark_habit_completed(callback.from_user.id, habit_id)
 
     if not success:
         await callback.answer("Уже отмечено сегодня", show_alert=True)
         return
 
-    if goal_info and goal_info[0]:
-        _, name, streak, goal = goal_info
-        await callback.answer(f"Цель достигнута: {name} — {streak}/{goal}", show_alert=True)
-    else:
-        await callback.answer("Отмечено")
+    alert = f"+{info['xp_added']} XP"
+    if info["level_up"]:
+        alert += f"\nНовый уровень: {info['level_up']}"
+    if info["achieved_goal"]:
+        alert += f"\nЦель достигнута: {info['habit_name']}"
+
+    await callback.answer(alert, show_alert=bool(info["level_up"] or info["achieved_goal"]))
+
+    if info["achievements"]:
+        await callback.message.answer(
+            unlocked_achievement_text(info["achievements"]),
+            parse_mode="HTML",
+        )
 
     await show_today(callback, callback.from_user.id)
 
 
-@router.message(F.text == "Привычки")
+@router.message(F.text.in_(["🟣 Привычки", "Привычки"]))
 async def habits(message: types.Message):
     await show_habits(message, message.from_user.id)
 
@@ -211,15 +359,17 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
     habits = await get_user_habits(user_id)
 
     if not habits:
-        text = "Привычек пока нет. Начнём с одной."
+        text = "🟣 <b>Привычки</b>\n\nСписок пуст. Начнём с одной."
     else:
-        text = "<b>Привычки</b>\n"
+        text = "🟣 <b>Привычки</b>\n"
         for habit in habits:
-            _, _, created_date, streak, total_completed, last_date, goal_days = habit
-            done_today = " · сегодня готово" if last_date == today_str() else ""
+            _, _, _, streak, total_completed, last_date, goal_days = habit
+            percent = min(100, round(streak / goal_days * 100)) if goal_days else 0
+            done_today = " 🟢" if last_date == today_str() else ""
             text += (
-                f"\n• <b>{habit_name(habit)}</b>"
-                f"\n  серия {streak}/{goal_days}, всего {total_completed}{done_today}\n"
+                f"\n<b>{habit_name(habit)}</b>{done_today}\n"
+                f"{progress_bar(percent, 8)} {streak}/{goal_days}\n"
+                f"Всего: {total_completed}\n"
             )
 
     await answer_or_edit(obj, text, habit_actions_keyboard(habits))
@@ -227,10 +377,7 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
 
 @router.callback_query(F.data == "add_habit")
 async def new_habit_start(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer(
-        "Как назовём привычку?",
-        reply_markup=ReplyKeyboardRemove(),
-    )
+    await callback.message.answer("Как назовём привычку?", reply_markup=ReplyKeyboardRemove())
     await state.set_state(Form.waiting_habit_name)
     await callback.answer()
 
@@ -244,7 +391,7 @@ async def new_habit_name(message: types.Message, state: FSMContext):
         return
 
     if len(name) > 40:
-        await message.answer("Давай короче: до 40 символов, чтобы кнопки были аккуратными.")
+        await message.answer("Давай короче: до 40 символов.")
         return
 
     await state.update_data(habit_name=name)
@@ -276,8 +423,7 @@ async def process_goal(callback: types.CallbackQuery, state: FSMContext):
     await save_habit(callback.from_user.id, name, goal_days)
     await state.clear()
     await callback.message.edit_text(
-        f"Готово: <b>{escape(name)}</b>\n"
-        f"Цель: <b>{goal_days} {days_word(goal_days)}</b>.",
+        f"🟢 Готово: <b>{escape(name)}</b>\nЦель: <b>{goal_days} {days_word(goal_days)}</b>.",
         parse_mode="HTML",
     )
     await callback.message.answer("Меню рядом.", reply_markup=main_keyboard)
@@ -304,19 +450,13 @@ async def process_custom_goal(message: types.Message, state: FSMContext):
         await state.clear()
         return
 
-    await create_habit(message.from_user.id, name, goal_days, message, state)
-
-
-async def create_habit(user_id: int, name: str, goal_days: int, obj, state: FSMContext):
-    await save_habit(user_id, name, goal_days)
+    await save_habit(message.from_user.id, name, goal_days)
     await state.clear()
-
-    text = (
-        f"Готово: <b>{escape(name)}</b>\n"
-        f"Цель: <b>{goal_days} {days_word(goal_days)}</b>."
+    await message.answer(
+        f"🟢 Готово: <b>{escape(name)}</b>\nЦель: <b>{goal_days} {days_word(goal_days)}</b>.",
+        parse_mode="HTML",
+        reply_markup=main_keyboard,
     )
-
-    await obj.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
 
 
 @router.callback_query(F.data.startswith("edit_"))
@@ -365,15 +505,32 @@ async def reset_habit(callback: types.CallbackQuery):
     await show_habits(callback, callback.from_user.id)
 
 
-@router.callback_query(F.data.startswith("delete_"))
+@router.callback_query(F.data.startswith("delete_ask_"))
+async def ask_delete_habit(callback: types.CallbackQuery):
+    habit_id = int(callback.data.split("_")[-1])
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Удалить", callback_data=f"delete_yes_{habit_id}"),
+            InlineKeyboardButton(text="Отмена", callback_data="open_habits"),
+        ]
+    ])
+    await answer_or_edit(callback, "🔴 Удалить привычку? История по ней тоже исчезнет.", kb)
+
+
+@router.callback_query(F.data == "open_habits")
+async def open_habits(callback: types.CallbackQuery):
+    await show_habits(callback, callback.from_user.id)
+
+
+@router.callback_query(F.data.startswith("delete_yes_"))
 async def delete_habit(callback: types.CallbackQuery):
-    habit_id = int(callback.data.split("_")[1])
+    habit_id = int(callback.data.split("_")[-1])
     await delete_habit_from_db(callback.from_user.id, habit_id)
     await callback.answer("Удалено")
     await show_habits(callback, callback.from_user.id)
 
 
-@router.message(F.text == "Настройки")
+@router.message(F.text.in_(["⚙️ Настройки", "Настройки"]))
 async def settings(message: types.Message):
     await show_settings(message, message.from_user.id)
 
@@ -383,22 +540,23 @@ async def show_settings(obj: types.Message | types.CallbackQuery, user_id: int):
     enabled = settings["enabled"]
     times = parse_reminder_times(settings["reminder_time"])
 
-    status = "включены" if enabled else "выключены"
+    status = "🟢 включены" if enabled else "🔴 выключены"
     text = (
-        "<b>Настройки</b>\n\n"
+        "⚙️ <b>Настройки</b>\n\n"
         f"Напоминания: <b>{status}</b>\n"
-        f"Время: <b>{', '.join(times)}</b>"
+        f"Время: <b>{', '.join(times)}</b>\n\n"
+        "Можно выбрать несколько времён."
     )
 
     rows = [[
         InlineKeyboardButton(
-            text="Выключить" if enabled else "Включить",
+            text="🔕 Выключить" if enabled else "🔔 Включить",
             callback_data="rem_toggle",
         )
     ]]
 
     for reminder_time in REMINDER_CHOICES:
-        mark = "✓" if reminder_time in times else "+"
+        mark = "✅" if reminder_time in times else "➕"
         rows.append([
             InlineKeyboardButton(
                 text=f"{mark} {reminder_time}",
@@ -453,14 +611,14 @@ async def send_daily_reminder_to_user(user_id: int):
         return
 
     rows = []
-    text = "<b>Мягкое напоминание</b>\n\n"
+    text = "🟡 <b>Мягкое напоминание</b>\n\n"
 
     for habit in unmarked:
         habit_id, _, _, streak, _, last_date, goal_days = habit
         risk = " · серия под угрозой" if last_date == yesterday and streak > 0 else ""
-        text += f"• <b>{habit_name(habit)}</b> — {streak}/{goal_days}{risk}\n"
+        text += f"• <b>{habit_name(habit)}</b> · {streak}/{goal_days}{risk}\n"
         rows.append([
-            InlineKeyboardButton(text=f"Отметить: {habit[1]}", callback_data=f"mark_{habit_id}")
+            InlineKeyboardButton(text=f"✅ {habit[1][:28]}", callback_data=f"mark_{habit_id}")
         ])
 
     try:
