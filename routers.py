@@ -1,7 +1,8 @@
 # routers.py
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
+from math import ceil
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
@@ -18,12 +19,15 @@ from aiogram.types import (
 
 from bot import bot
 from db import (
+    date_range,
     delete_habit_from_db,
+    get_habit_logs,
     get_reminder_settings,
     get_user_habits,
     get_user_stats,
     get_users_by_reminder_time,
     mark_habit_completed,
+    parse_date,
     parse_reminder_times,
     reset_habit_streak,
     save_habit,
@@ -85,6 +89,24 @@ def daily_status(done: int, total: int) -> tuple[str, int]:
     return "🔴", percent
 
 
+def rate_color(rate: int) -> str:
+    if rate >= 80:
+        return "🟢"
+    if rate >= 50:
+        return "🟡"
+    return "🔴"
+
+
+def habit_status(rate: int, streak: int, last_date: str | None) -> str:
+    if last_date == yesterday_str() and streak > 0:
+        return "под угрозой"
+    if rate >= 80:
+        return "стабильная"
+    if rate >= 50:
+        return "неровная"
+    return "проседает"
+
+
 def render_heatmap(stats: dict) -> str:
     habits_count = max(stats["habits_count"], 1)
     cells = []
@@ -118,23 +140,194 @@ def render_week_graph(stats: dict) -> str:
     return "\n".join(lines)
 
 
+def completion_for_dates(stats: dict, dates: list[str]) -> tuple[int, int, int]:
+    possible = 0
+    completed = 0
+
+    for habit in stats["habits"]:
+        created = parse_date(habit[2])
+        for date in dates:
+            if parse_date(date) >= created:
+                possible += 1
+
+    for date in dates:
+        completed += stats["daily_done"].get(date, 0)
+
+    rate = round(completed / possible * 100) if possible else 0
+    return completed, possible, rate
+
+
+def weekly_trend(stats: dict) -> dict:
+    current_dates = stats["dates"][-7:]
+    previous_dates = stats["dates"][-14:-7]
+    current_done, current_possible, current_rate = completion_for_dates(stats, current_dates)
+    previous_done, previous_possible, previous_rate = completion_for_dates(stats, previous_dates)
+    diff = current_rate - previous_rate
+
+    if previous_possible == 0:
+        label = "недостаточно данных для сравнения"
+    elif diff > 0:
+        label = f"+{diff}% к прошлой неделе"
+    elif diff < 0:
+        label = f"{diff}% к прошлой неделе"
+    else:
+        label = "без изменений"
+
+    return {
+        "current_done": current_done,
+        "current_possible": current_possible,
+        "current_rate": current_rate,
+        "previous_done": previous_done,
+        "previous_possible": previous_possible,
+        "previous_rate": previous_rate,
+        "diff": diff,
+        "label": label,
+    }
+
+
+def best_and_weak_days(stats: dict) -> tuple[str, str]:
+    dates = stats["dates"][-7:]
+    day_rates = []
+
+    for date in dates:
+        _, possible, rate = completion_for_dates(stats, [date])
+        if possible:
+            day_rates.append((date, rate))
+
+    if not day_rates:
+        return "пока нет", "пока нет"
+
+    best = max(day_rates, key=lambda item: item[1])
+    weak = min(day_rates, key=lambda item: item[1])
+    best_text = f"{datetime.strptime(best[0], '%Y-%m-%d').strftime('%d.%m')} · {best[1]}%"
+    weak_text = f"{datetime.strptime(weak[0], '%Y-%m-%d').strftime('%d.%m')} · {weak[1]}%"
+    return best_text, weak_text
+
+
+def longest_streak_for_dates(dates: set[str]) -> int:
+    if not dates:
+        return 0
+
+    ordered = sorted(parse_date(date) for date in dates)
+    best = 1
+    current = 1
+
+    for previous, current_date in zip(ordered, ordered[1:]):
+        if current_date == previous + timedelta(days=1):
+            current += 1
+        else:
+            current = 1
+        best = max(best, current)
+
+    return best
+
+
+def habit_forecast(habit, rate: int) -> str:
+    _, _, _, streak, _, _, goal_days = habit
+    left = max(goal_days - streak, 0)
+
+    if left == 0:
+        return "цель уже достигнута"
+    if rate < 20:
+        return f"до цели {left} {days_word(left)}; темп пока слишком низкий для прогноза"
+
+    estimated_days = ceil(left / (rate / 100))
+    target_date = datetime.now().date() + timedelta(days=estimated_days)
+    return f"до цели {left} {days_word(left)}; примерно к {target_date.strftime('%d.%m')}"
+
+
+async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
+    habits = await get_user_habits(user_id)
+    logs = await get_habit_logs(user_id, days=days)
+    dates = date_range(days)
+    completed_by_habit: dict[int, set[str]] = {}
+
+    for habit_id, completed_date in logs:
+        completed_by_habit.setdefault(habit_id, set()).add(completed_date)
+
+    result = []
+    for habit in habits:
+        habit_id = habit[0]
+        created = parse_date(habit[2])
+        available_dates = [date for date in dates if parse_date(date) >= created]
+        completed_dates = completed_by_habit.get(habit_id, set())
+        done = sum(1 for date in available_dates if date in completed_dates)
+        possible = len(available_dates)
+        missed = max(possible - done, 0)
+        rate = round(done / possible * 100) if possible else 0
+        heatmap = "".join("🟩" if date in completed_dates else "⬜" for date in available_dates[-14:])
+
+        result.append({
+            "habit": habit,
+            "done": done,
+            "possible": possible,
+            "missed": missed,
+            "rate": rate,
+            "heatmap": heatmap or "⬜",
+            "longest_streak": longest_streak_for_dates(completed_dates),
+            "status": habit_status(rate, habit[3], habit[5]),
+            "forecast": habit_forecast(habit, rate),
+        })
+
+    return result
+
+
+async def personal_records(user_id: int) -> dict:
+    stats = await get_user_stats(user_id, days=30)
+    breakdown = await habit_breakdown(user_id, days=30)
+
+    best_habit = max(breakdown, key=lambda item: item["rate"], default=None)
+    weak_habit = min(breakdown, key=lambda item: item["rate"], default=None)
+    best_streak_item = max(breakdown, key=lambda item: item["longest_streak"], default=None)
+
+    best_day_rate = 0
+    best_day = "пока нет"
+    for date in stats["dates"]:
+        _, possible, rate = completion_for_dates(stats, [date])
+        if possible and rate >= best_day_rate:
+            best_day_rate = rate
+            best_day = f"{datetime.strptime(date, '%Y-%m-%d').strftime('%d.%m')} · {rate}%"
+
+    best_7_rate = 0
+    for index in range(0, max(len(stats["dates"]) - 6, 0)):
+        window = stats["dates"][index:index + 7]
+        _, possible, rate = completion_for_dates(stats, window)
+        if possible:
+            best_7_rate = max(best_7_rate, rate)
+
+    return {
+        "best_habit": best_habit,
+        "weak_habit": weak_habit,
+        "best_streak_item": best_streak_item,
+        "best_day": best_day,
+        "best_7_rate": best_7_rate,
+    }
+
+
 def insight_text(stats: dict) -> str:
     rate = stats["completion_rate"]
     missed = stats["missed_days"]
+    trend = weekly_trend(stats)
 
     if stats["possible"] == 0:
         return "Данных пока мало. Дай привычкам пару дней, и анализ станет полезнее."
 
+    if trend["diff"] <= -15:
+        return "Неделя просела. Лучше выбрать одну главную привычку на завтра и не пытаться закрыть всё сразу."
+
+    if trend["diff"] >= 15:
+        return "Неделя заметно лучше прошлой. Сохрани тот же объём, не усложняй систему раньше времени."
+
     if rate >= 85:
-        return "Ритм устойчивый. Сейчас важнее не усложнять систему."
+        return "Ритм устойчивый. Сейчас важнее беречь простоту и не добавлять лишних привычек."
 
     if rate >= 60:
-        return "Хорошая база есть. Самая полезная точка роста — закрывать дни полностью."
+        return "База хорошая. Точка роста — закрывать дни полностью, особенно привычки с жёлтым статусом."
 
     if missed > stats["period_completed"]:
-        return "Сейчас больше пропусков, чем выполнений. Лучше уменьшить нагрузку или оставить 1-2 главные привычки."
+        return "Пропусков больше, чем выполнений. Стоит временно оставить 1-2 ключевые привычки."
 
-    return "Ритм ещё формируется. Нормально. Смотри на неделю, а не на один день."
+    return "Ритм формируется. Смотри на неделю, а не на один день."
 
 
 async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
@@ -204,6 +397,14 @@ def habit_actions_keyboard(habits) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def stats_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🟣 По привычкам", callback_data="stats_habits")],
+        [InlineKeyboardButton(text="📅 Обзор недели", callback_data="stats_week")],
+        [InlineKeyboardButton(text="🟢 Сегодня", callback_data="open_today")],
+    ])
+
+
 @router.message(Command("start"))
 async def start(message: types.Message):
     await get_reminder_settings(message.from_user.id)
@@ -212,6 +413,11 @@ async def start(message: types.Message):
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
+
+
+@router.message(F.text.in_(["🟢 Сегодня", "Сегодня"]))
+async def today(message: types.Message):
+    await show_today(message, message.from_user.id)
 
 
 @router.message(Command("stats"))
@@ -231,6 +437,7 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         )
         return
 
+    trend = weekly_trend(stats)
     text = (
         "🔵 <b>Статистика за 30 дней</b>\n\n"
         f"✅ Выполнений: <b>{stats['period_completed']}</b> из {stats['possible']}\n"
@@ -238,16 +445,17 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         f"{progress_bar(stats['completion_rate'])}\n"
         f"🔥 Лучшая серия: <b>{stats['best_streak']} {days_word(stats['best_streak'])}</b>\n"
         f"⚠️ Пропущено: <b>{stats['missed_days']}</b>\n\n"
+        "📊 <b>Сравнение недель</b>\n"
+        f"Эта: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
+        f"Прошлая: <b>{trend['previous_rate']}%</b> ({trend['previous_done']}/{trend['previous_possible']})\n"
+        f"Тренд: <b>{trend['label']}</b>\n\n"
         "🟡 <b>Активность</b>\n"
         f"{render_heatmap(stats)}\n\n"
-        "📊 <b>Последние 7 дней</b>\n"
-        f"{render_week_graph(stats)}\n\n"
         "🧠 <b>Вывод</b>\n"
         f"{insight_text(stats)}"
     )
 
-    rows = [[InlineKeyboardButton(text="🟢 Сегодня", callback_data="open_today")]]
-    await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows))
+    await answer_or_edit(obj, text, stats_keyboard())
 
 
 @router.callback_query(F.data == "open_stats")
@@ -255,9 +463,74 @@ async def open_stats(callback: types.CallbackQuery):
     await show_statistics(callback, callback.from_user.id)
 
 
-@router.message(F.text.in_(["🟢 Сегодня", "Сегодня"]))
-async def today(message: types.Message):
-    await show_today(message, message.from_user.id)
+@router.callback_query(F.data == "stats_habits")
+async def show_habit_stats(callback: types.CallbackQuery):
+    breakdown = await habit_breakdown(callback.from_user.id, days=14)
+
+    if not breakdown:
+        await answer_or_edit(callback, "🟣 <b>По привычкам</b>\n\nПока нет данных.", stats_keyboard())
+        return
+
+    text = "🟣 <b>Разбор привычек · 14 дней</b>\n\n"
+    for item in breakdown:
+        habit = item["habit"]
+        text += (
+            f"{rate_color(item['rate'])} <b>{habit_name(habit)}</b>\n"
+            f"{item['heatmap']} {item['rate']}%\n"
+            f"Серия: {habit[3]}/{habit[6]} · пропусков: {item['missed']}\n"
+            f"Статус: <b>{item['status']}</b>\n"
+            f"Прогноз: {item['forecast']}\n\n"
+        )
+
+    await answer_or_edit(callback, text[:3900], InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📅 Обзор недели", callback_data="stats_week")],
+        [InlineKeyboardButton(text="🔵 Назад", callback_data="open_stats")],
+    ]))
+
+
+@router.callback_query(F.data == "stats_week")
+async def show_week_review(callback: types.CallbackQuery):
+    stats = await get_user_stats(callback.from_user.id, days=30)
+    records = await personal_records(callback.from_user.id)
+    trend = weekly_trend(stats)
+    best_day, weak_day = best_and_weak_days(stats)
+
+    if stats["habits_count"] == 0:
+        await answer_or_edit(callback, "📅 <b>Обзор недели</b>\n\nПока нет данных.", stats_keyboard())
+        return
+
+    best_habit = records["best_habit"]
+    weak_habit = records["weak_habit"]
+    best_streak_item = records["best_streak_item"]
+
+    text = (
+        "📅 <b>Обзор недели</b>\n\n"
+        f"Эта неделя: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
+        f"Прошлая неделя: <b>{trend['previous_rate']}%</b> ({trend['previous_done']}/{trend['previous_possible']})\n"
+        f"Тренд: <b>{trend['label']}</b>\n\n"
+        f"Лучший день: <b>{best_day}</b>\n"
+        f"Слабый день: <b>{weak_day}</b>\n\n"
+        "🏁 <b>Личные рекорды</b>\n"
+        f"Лучший период 7 дней: <b>{records['best_7_rate']}%</b>\n"
+        f"Лучший день: <b>{records['best_day']}</b>\n"
+    )
+
+    if best_streak_item:
+        text += (
+            f"Самая длинная серия: <b>{best_streak_item['longest_streak']} "
+            f"{days_word(best_streak_item['longest_streak'])}</b> · {habit_name(best_streak_item['habit'])}\n"
+        )
+    if best_habit:
+        text += f"Самая стабильная: <b>{habit_name(best_habit['habit'])}</b> · {best_habit['rate']}%\n"
+    if weak_habit:
+        text += f"Зона внимания: <b>{habit_name(weak_habit['habit'])}</b> · {weak_habit['rate']}%\n"
+
+    text += f"\n🧠 <b>Совет</b>\n{insight_text(stats)}"
+
+    await answer_or_edit(callback, text, InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🟣 По привычкам", callback_data="stats_habits")],
+        [InlineKeyboardButton(text="🔵 Назад", callback_data="open_stats")],
+    ]))
 
 
 @router.callback_query(F.data == "open_today")
