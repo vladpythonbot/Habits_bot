@@ -18,12 +18,9 @@ from aiogram.types import (
 
 from bot import bot
 from db import (
-    ACHIEVEMENTS,
     delete_habit_from_db,
-    get_achievements,
     get_reminder_settings,
     get_user_habits,
-    get_user_level,
     get_user_stats,
     get_users_by_reminder_time,
     mark_habit_completed,
@@ -72,13 +69,6 @@ def progress_bar(percent: int, width: int = 10) -> str:
     return color * filled + "⬜" * (width - filled)
 
 
-def xp_bar(xp: int, next_level_xp: int) -> str:
-    previous_level_xp = max(0, next_level_xp - 100)
-    current = xp - previous_level_xp
-    percent = round(current / 100 * 100)
-    return progress_bar(percent)
-
-
 def habit_name(habit) -> str:
     return escape(habit[1])
 
@@ -111,8 +101,7 @@ def render_heatmap(stats: dict) -> str:
         else:
             cells.append("🟩")
 
-    rows = ["".join(cells[i:i + 7]) for i in range(0, len(cells), 7)]
-    return "\n".join(rows)
+    return "\n".join("".join(cells[i:i + 7]) for i in range(0, len(cells), 7))
 
 
 def render_week_graph(stats: dict) -> str:
@@ -129,14 +118,23 @@ def render_week_graph(stats: dict) -> str:
     return "\n".join(lines)
 
 
-def unlocked_achievement_text(achievements: list[dict]) -> str:
-    if not achievements:
-        return ""
+def insight_text(stats: dict) -> str:
+    rate = stats["completion_rate"]
+    missed = stats["missed_days"]
 
-    lines = ["\n\n🟣 <b>Новые ачивки</b>"]
-    for item in achievements:
-        lines.append(f"🏆 <b>{escape(item['title'])}</b> · {escape(item['description'])}")
-    return "\n".join(lines)
+    if stats["possible"] == 0:
+        return "Данных пока мало. Дай привычкам пару дней, и анализ станет полезнее."
+
+    if rate >= 85:
+        return "Ритм устойчивый. Сейчас важнее не усложнять систему."
+
+    if rate >= 60:
+        return "Хорошая база есть. Самая полезная точка роста — закрывать дни полностью."
+
+    if missed > stats["period_completed"]:
+        return "Сейчас больше пропусков, чем выполнений. Лучше уменьшить нагрузку или оставить 1-2 главные привычки."
+
+    return "Ритм ещё формируется. Нормально. Смотри на неделю, а не на один день."
 
 
 async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
@@ -149,7 +147,6 @@ async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, re
 
 async def main_summary(user_id: int) -> str:
     habits = await get_user_habits(user_id)
-    level = await get_user_level(user_id)
 
     if not habits:
         return (
@@ -169,7 +166,6 @@ async def main_summary(user_id: int) -> str:
         f"{status} Сегодня: <b>{done}/{len(habits)}</b> · {percent}%",
         progress_bar(percent),
         f"🔥 Лучшая серия: <b>{best_streak} {days_word(best_streak)}</b>",
-        f"⭐ Уровень: <b>{level['level']}</b> · XP {level['xp']}/{level['next_level_xp']}",
     ]
 
     if at_risk:
@@ -226,8 +222,6 @@ async def statistics(message: types.Message):
 
 async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int):
     stats = await get_user_stats(user_id, days=30)
-    level = await get_user_level(user_id)
-    achievements = await get_achievements(user_id)
 
     if stats["habits_count"] == 0:
         await answer_or_edit(
@@ -248,32 +242,12 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         f"{render_heatmap(stats)}\n\n"
         "📊 <b>Последние 7 дней</b>\n"
         f"{render_week_graph(stats)}\n\n"
-        "🟣 <b>Профиль</b>\n"
-        f"⭐ Уровень <b>{level['level']}</b>\n"
-        f"{xp_bar(level['xp'], level['next_level_xp'])} {level['xp']}/{level['next_level_xp']} XP\n"
-        f"🏆 Ачивки: <b>{len(achievements)}/{len(ACHIEVEMENTS)}</b>"
+        "🧠 <b>Вывод</b>\n"
+        f"{insight_text(stats)}"
     )
 
-    rows = [
-        [InlineKeyboardButton(text="🏆 Ачивки", callback_data="achievements")],
-        [InlineKeyboardButton(text="🟢 Сегодня", callback_data="open_today")],
-    ]
+    rows = [[InlineKeyboardButton(text="🟢 Сегодня", callback_data="open_today")]]
     await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows))
-
-
-@router.callback_query(F.data == "achievements")
-async def show_achievements(callback: types.CallbackQuery):
-    achievements = await get_achievements(callback.from_user.id)
-    unlocked = {item["code"] for item in achievements}
-
-    text = "🏆 <b>Ачивки</b>\n\n"
-    for code, (title, description) in ACHIEVEMENTS.items():
-        mark = "🟣" if code in unlocked else "⚪"
-        text += f"{mark} <b>{escape(title)}</b>\n{escape(description)}\n\n"
-
-    await answer_or_edit(callback, text, InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔵 Статистика", callback_data="open_stats")]
-    ]))
 
 
 @router.callback_query(F.data == "open_stats")
@@ -333,20 +307,11 @@ async def process_mark_callback(callback: types.CallbackQuery):
         await callback.answer("Уже отмечено сегодня", show_alert=True)
         return
 
-    alert = f"+{info['xp_added']} XP"
-    if info["level_up"]:
-        alert += f"\nНовый уровень: {info['level_up']}"
+    alert = "Отмечено"
     if info["achieved_goal"]:
         alert += f"\nЦель достигнута: {info['habit_name']}"
 
-    await callback.answer(alert, show_alert=bool(info["level_up"] or info["achieved_goal"]))
-
-    if info["achievements"]:
-        await callback.message.answer(
-            unlocked_achievement_text(info["achievements"]),
-            parse_mode="HTML",
-        )
-
+    await callback.answer(alert, show_alert=info["achieved_goal"])
     await show_today(callback, callback.from_user.id)
 
 

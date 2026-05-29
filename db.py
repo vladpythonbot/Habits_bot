@@ -8,16 +8,6 @@ import aiosqlite
 
 DB_NAME = os.getenv("DB_PATH", str(Path(__file__).with_name("habits.db")))
 
-ACHIEVEMENTS = {
-    "first_step": ("Первый шаг", "Отмечена первая привычка"),
-    "streak_3": ("Три дня", "Серия 3 дня подряд"),
-    "streak_7": ("Неделя огня", "Серия 7 дней подряд"),
-    "goal_reached": ("Цель взята", "Достигнута цель привычки"),
-    "collector_3": ("Система", "Добавлены 3 привычки"),
-    "perfect_day": ("Чистый день", "Все привычки отмечены сегодня"),
-}
-
-
 def today_str() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
@@ -36,10 +26,6 @@ def date_range(days: int) -> list[str]:
 
 def parse_date(value: str):
     return datetime.strptime(value, "%Y-%m-%d").date()
-
-
-def level_from_xp(xp: int) -> int:
-    return max(1, xp // 100 + 1)
 
 
 async def init_db():
@@ -72,24 +58,6 @@ async def init_db():
         """)
 
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS user_stats (
-                user_id INTEGER PRIMARY KEY,
-                xp INTEGER DEFAULT 0,
-                level INTEGER DEFAULT 1,
-                updated_at TEXT NOT NULL
-            )
-        """)
-
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS user_achievements (
-                user_id INTEGER NOT NULL,
-                code TEXT NOT NULL,
-                unlocked_at TEXT NOT NULL,
-                PRIMARY KEY(user_id, code)
-            )
-        """)
-
-        await db.execute("""
             CREATE TABLE IF NOT EXISTS reminder_settings (
                 user_id INTEGER PRIMARY KEY,
                 enabled BOOLEAN DEFAULT 0,
@@ -115,9 +83,6 @@ async def save_habit(user_id: int, habit_name: str, goal_days: int = 30):
             VALUES (?, ?, ?, NULL, 0, 0, ?)
         """, (user_id, habit_name, today_str(), goal_days))
         await db.commit()
-
-    await unlock_achievement_if_needed(user_id, "collector_3")
-
 
 async def get_user_habits(user_id: int):
     await refresh_missed_streaks(user_id)
@@ -169,17 +134,11 @@ async def mark_habit_completed(user_id: int, habit_id: int):
 
         await db.commit()
 
-    xp_added, level_up = await add_xp(user_id, 10 + min(new_streak, 10))
-    achievements = await evaluate_achievements(user_id, new_streak, achieved_goal)
-
     return True, {
         "habit_name": habit_name,
         "streak": new_streak,
         "goal_days": goal_days,
         "achieved_goal": achieved_goal,
-        "xp_added": xp_added,
-        "level_up": level_up,
-        "achievements": achievements,
     }
 
 
@@ -227,112 +186,6 @@ async def refresh_missed_streaks(user_id: int):
               AND last_completed_date < ?
         """, (today_str(), user_id, yesterday_str()))
         await db.commit()
-
-
-async def add_xp(user_id: int, amount: int):
-    now = datetime.now().isoformat(timespec="seconds")
-
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("SELECT xp, level FROM user_stats WHERE user_id = ?", (user_id,))
-        row = await cursor.fetchone()
-
-        old_xp, old_level = row if row else (0, 1)
-        new_xp = old_xp + amount
-        new_level = level_from_xp(new_xp)
-
-        await db.execute("""
-            INSERT INTO user_stats (user_id, xp, level, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                xp = excluded.xp,
-                level = excluded.level,
-                updated_at = excluded.updated_at
-        """, (user_id, new_xp, new_level, now))
-        await db.commit()
-
-    return amount, new_level if new_level > old_level else None
-
-
-async def get_user_level(user_id: int):
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("SELECT xp, level FROM user_stats WHERE user_id = ?", (user_id,))
-        row = await cursor.fetchone()
-
-    if not row:
-        return {"xp": 0, "level": 1, "next_level_xp": 100}
-
-    xp, level = row
-    return {"xp": xp, "level": level, "next_level_xp": level * 100}
-
-
-async def unlock_achievement_if_needed(user_id: int, code: str):
-    if code not in ACHIEVEMENTS:
-        return None
-
-    now = datetime.now().isoformat(timespec="seconds")
-
-    async with aiosqlite.connect(DB_NAME) as db:
-        try:
-            await db.execute("""
-                INSERT INTO user_achievements (user_id, code, unlocked_at)
-                VALUES (?, ?, ?)
-            """, (user_id, code, now))
-            await db.commit()
-        except aiosqlite.IntegrityError:
-            return None
-
-    title, description = ACHIEVEMENTS[code]
-    await add_xp(user_id, 25)
-    return {"code": code, "title": title, "description": description}
-
-
-async def evaluate_achievements(user_id: int, streak: int, achieved_goal: bool):
-    unlocked = []
-
-    for code, condition in [
-        ("first_step", True),
-        ("streak_3", streak >= 3),
-        ("streak_7", streak >= 7),
-        ("goal_reached", achieved_goal),
-        ("collector_3", True),
-        ("perfect_day", True),
-    ]:
-        if not condition:
-            continue
-
-        if code == "collector_3":
-            habits = await get_user_habits(user_id)
-            if len(habits) < 3:
-                continue
-
-        if code == "perfect_day":
-            habits = await get_user_habits(user_id)
-            if not habits or any(h[5] != today_str() for h in habits):
-                continue
-
-        achievement = await unlock_achievement_if_needed(user_id, code)
-        if achievement:
-            unlocked.append(achievement)
-
-    return unlocked
-
-
-async def get_achievements(user_id: int):
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT code, unlocked_at
-            FROM user_achievements
-            WHERE user_id = ?
-            ORDER BY unlocked_at DESC
-        """, (user_id,))
-        rows = await cursor.fetchall()
-
-    result = []
-    for code, unlocked_at in rows:
-        title, description = ACHIEVEMENTS.get(code, (code, ""))
-        result.append({"code": code, "title": title, "description": description, "unlocked_at": unlocked_at})
-
-    return result
 
 
 async def get_user_stats(user_id: int, days: int = 30):
