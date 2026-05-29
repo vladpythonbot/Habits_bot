@@ -180,9 +180,24 @@ def weekly_trend(stats: dict) -> dict:
         "previous_done": previous_done,
         "previous_possible": previous_possible,
         "previous_rate": previous_rate,
+        "has_previous": previous_possible > 0,
         "diff": diff,
         "label": label,
     }
+
+
+def previous_week_line(trend: dict) -> str:
+    if not trend["has_previous"]:
+        return "Прошлая: <b>пока нет данных</b>\n"
+
+    return f"Прошлая: <b>{trend['previous_rate']}%</b> ({trend['previous_done']}/{trend['previous_possible']})\n"
+
+
+def previous_week_review_line(trend: dict) -> str:
+    if not trend["has_previous"]:
+        return "Прошлая неделя: <b>пока нет данных</b>\n"
+
+    return f"Прошлая неделя: <b>{trend['previous_rate']}%</b> ({trend['previous_done']}/{trend['previous_possible']})\n"
 
 
 def best_and_weak_days(stats: dict) -> tuple[str, str]:
@@ -308,26 +323,44 @@ def insight_text(stats: dict) -> str:
     rate = stats["completion_rate"]
     missed = stats["missed_days"]
     trend = weekly_trend(stats)
+    habits_count = stats["habits_count"]
+    today_done = stats["today_done"]
+    best_streak = stats["best_streak"]
 
     if stats["possible"] == 0:
         return "Данных пока мало. Дай привычкам пару дней, и анализ станет полезнее."
 
-    if trend["diff"] <= -15:
-        return "Неделя просела. Лучше выбрать одну главную привычку на завтра и не пытаться закрыть всё сразу."
+    tips = []
 
-    if trend["diff"] >= 15:
-        return "Неделя заметно лучше прошлой. Сохрани тот же объём, не усложняй систему раньше времени."
+    if not trend["has_previous"]:
+        tips.append("Сравнение с прошлой неделей появится, когда накопится ещё 7 дней данных.")
+    elif trend["diff"] <= -15:
+        tips.append("Неделя просела. На завтра лучше выбрать одну главную привычку и закрыть её первой.")
+    elif trend["diff"] >= 15:
+        tips.append("Неделя заметно лучше прошлой. Сохрани тот же объём, пока ритм закрепляется.")
+    elif abs(trend["diff"]) <= 5:
+        tips.append("Темп почти не изменился. Маленькое улучшение даст не новая привычка, а меньше пропусков.")
 
     if rate >= 85:
-        return "Ритм устойчивый. Сейчас важнее беречь простоту и не добавлять лишних привычек."
+        tips.append("Ритм устойчивый. Сейчас важнее беречь простоту и не добавлять лишнюю нагрузку.")
+    elif rate >= 60:
+        tips.append("База хорошая. Главная точка роста — закрывать дни полностью, а не частично.")
+    elif missed > stats["period_completed"]:
+        tips.append("Пропусков больше, чем выполнений. Стоит временно оставить 1-2 ключевые привычки.")
+    else:
+        tips.append("Ритм формируется. Оценивай неделю целиком, а не один неудачный день.")
 
-    if rate >= 60:
-        return "База хорошая. Точка роста — закрывать дни полностью, особенно привычки с жёлтым статусом."
+    if habits_count >= 4 and rate < 70:
+        tips.append("Привычек уже много для нестабильного периода. Можно поставить часть на паузу.")
 
-    if missed > stats["period_completed"]:
-        return "Пропусков больше, чем выполнений. Стоит временно оставить 1-2 ключевые привычки."
+    if today_done < habits_count:
+        left = habits_count - today_done
+        tips.append(f"На сегодня осталось {left}. Закрой самое короткое действие первым.")
 
-    return "Ритм формируется. Смотри на неделю, а не на один день."
+    if best_streak >= 7 and rate < 80:
+        tips.append("Длинная серия уже получалась. Значит проблема не в дисциплине, а в текущей нагрузке.")
+
+    return "\n".join(f"• {tip}" for tip in tips[:4])
 
 
 async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
@@ -447,7 +480,7 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         f"⚠️ Пропущено: <b>{stats['missed_days']}</b>\n\n"
         "📊 <b>Сравнение недель</b>\n"
         f"Эта: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
-        f"Прошлая: <b>{trend['previous_rate']}%</b> ({trend['previous_done']}/{trend['previous_possible']})\n"
+        f"{previous_week_line(trend)}"
         f"Тренд: <b>{trend['label']}</b>\n\n"
         "🟡 <b>Активность</b>\n"
         f"{render_heatmap(stats)}\n\n"
@@ -506,7 +539,7 @@ async def show_week_review(callback: types.CallbackQuery):
     text = (
         "📅 <b>Обзор недели</b>\n\n"
         f"Эта неделя: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
-        f"Прошлая неделя: <b>{trend['previous_rate']}%</b> ({trend['previous_done']}/{trend['previous_possible']})\n"
+        f"{previous_week_review_line(trend)}"
         f"Тренд: <b>{trend['label']}</b>\n\n"
         f"Лучший день: <b>{best_day}</b>\n"
         f"Слабый день: <b>{weak_day}</b>\n\n"
