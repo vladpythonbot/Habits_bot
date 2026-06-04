@@ -1,11 +1,10 @@
 
 import logging
-import aiosqlite
 from datetime import datetime
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot import bot
-from db import get_all_users_with_habits, get_user_habits, reset_habit_streak
+from db import get_all_users_with_habits, get_user_habits
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +55,7 @@ async def daily_reminder_and_reset():
         except Exception as e:
             logger.error(f"Не удалось отправить напоминание пользователю {user_id}: {e}")
 
-        for habit_id, habit_name, _, _ in unmarked:
-            await reset_habit_streak(user_id, habit_id)
-            logger.info(f"Цепочка обнулена для пользователя {user_id}, привычка ID {habit_id}")
+        logger.info(
+            f"Напоминание отправлено пользователю {user_id}; "
+            "пропуски записываются после окончания дня"
+        )

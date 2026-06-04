@@ -58,6 +58,17 @@ async def init_db():
         """)
 
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS habit_misses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                habit_id INTEGER NOT NULL,
+                missed_date TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(user_id, habit_id, missed_date)
+            )
+        """)
+
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS reminder_settings (
                 user_id INTEGER PRIMARY KEY,
                 enabled BOOLEAN DEFAULT 0,
@@ -125,6 +136,11 @@ async def mark_habit_completed(user_id: int, habit_id: int):
         """, (user_id, habit_id, today, datetime.now().isoformat(timespec="seconds")))
 
         await db.execute("""
+            DELETE FROM habit_misses
+            WHERE user_id = ? AND habit_id = ? AND missed_date = ?
+        """, (user_id, habit_id, today))
+
+        await db.execute("""
             UPDATE habits
             SET last_completed_date = ?,
                 streak = ?,
@@ -169,22 +185,62 @@ async def update_habit_name(user_id: int, habit_id: int, new_name: str):
 async def delete_habit_from_db(user_id: int, habit_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("DELETE FROM habit_logs WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
+        await db.execute("DELETE FROM habit_misses WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
         await db.execute("DELETE FROM habits WHERE id = ? AND user_id = ?", (habit_id, user_id))
         await db.commit()
     return True
 
 
+async def record_habit_miss(user_id: int, habit_id: int, missed_date: str | None = None) -> bool:
+    missed_date = missed_date or today_str()
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            INSERT OR IGNORE INTO habit_misses (user_id, habit_id, missed_date, created_at)
+            VALUES (?, ?, ?, ?)
+        """, (user_id, habit_id, missed_date, datetime.now().isoformat(timespec="seconds")))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def refresh_missed_streaks(user_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("""
-            UPDATE habits
-            SET streak = 0,
-                reset_date = ?
+        cursor = await db.execute("""
+            SELECT id, created_date, last_completed_date, streak, reset_date
+            FROM habits
             WHERE user_id = ?
-              AND streak > 0
-              AND last_completed_date IS NOT NULL
-              AND last_completed_date < ?
-        """, (today_str(), user_id, yesterday_str()))
+        """, (user_id,))
+        habits = await cursor.fetchall()
+
+        yesterday = parse_date(yesterday_str())
+        now = datetime.now().isoformat(timespec="seconds")
+
+        for habit_id, created_date, last_completed_date, streak, reset_date in habits:
+            start = parse_date(created_date)
+
+            if reset_date:
+                start = max(start, parse_date(reset_date) + timedelta(days=1))
+
+            if last_completed_date:
+                start = max(start, parse_date(last_completed_date) + timedelta(days=1))
+
+            current = start
+            while current <= yesterday:
+                missed_date = current.strftime("%Y-%m-%d")
+                await db.execute("""
+                    INSERT OR IGNORE INTO habit_misses (user_id, habit_id, missed_date, created_at)
+                    VALUES (?, ?, ?, ?)
+                """, (user_id, habit_id, missed_date, now))
+                current += timedelta(days=1)
+
+            if streak > 0 and last_completed_date and parse_date(last_completed_date) < yesterday:
+                await db.execute("""
+                    UPDATE habits
+                    SET streak = 0,
+                        reset_date = ?
+                    WHERE id = ? AND user_id = ?
+                """, (today_str(), habit_id, user_id))
+
         await db.commit()
 
 
@@ -209,6 +265,13 @@ async def get_user_stats(user_id: int, days: int = 30):
         """, (user_id,))
         total_completed = (await cursor.fetchone())[0]
 
+        cursor = await db.execute("""
+            SELECT COUNT(*)
+            FROM habit_misses
+            WHERE user_id = ? AND missed_date >= ?
+        """, (user_id, first_date))
+        recorded_misses = (await cursor.fetchone())[0]
+
     daily_done = {date: count for date, count in daily_rows}
     possible = 0
 
@@ -220,7 +283,7 @@ async def get_user_stats(user_id: int, days: int = 30):
 
     period_completed = sum(daily_done.values())
     completion_rate = round(period_completed / possible * 100) if possible else 0
-    missed_days = max(possible - period_completed, 0)
+    missed_days = recorded_misses
     best_streak = max((h[3] for h in habits), default=0)
     today_done = daily_done.get(today_str(), 0)
 
