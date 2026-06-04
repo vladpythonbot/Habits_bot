@@ -2,7 +2,6 @@
 import logging
 from datetime import datetime, timedelta
 from html import escape
-from math import ceil
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router, types
@@ -45,7 +44,6 @@ REMINDER_CHOICES = ["09:00", "12:00", "15:00", "18:00", "21:00"]
 
 class Form(StatesGroup):
     waiting_habit_name = State()
-    waiting_custom_goal = State()
     waiting_new_name = State()
 
 
@@ -140,6 +138,29 @@ def render_week_graph(stats: dict) -> str:
     return "\n".join(lines)
 
 
+def render_month_calendar(stats: dict) -> str:
+    habits_count = max(stats["habits_count"], 1)
+    lines = []
+
+    for index in range(0, len(stats["dates"]), 7):
+        week = stats["dates"][index:index + 7]
+        cells = []
+        for date in week:
+            done = stats["daily_done"].get(date, 0)
+            ratio = done / habits_count
+            if done == 0:
+                cells.append("⬜")
+            elif ratio < 0.5:
+                cells.append("🟥")
+            elif ratio < 1:
+                cells.append("🟨")
+            else:
+                cells.append("🟩")
+        lines.append("".join(cells))
+
+    return "\n".join(lines)
+
+
 def completion_for_dates(stats: dict, dates: list[str]) -> tuple[int, int, int]:
     possible = 0
     completed = 0
@@ -155,6 +176,18 @@ def completion_for_dates(stats: dict, dates: list[str]) -> tuple[int, int, int]:
 
     rate = round(completed / possible * 100) if possible else 0
     return completed, possible, rate
+
+
+def stability_grade(rate: int, missed: int, habits_count: int) -> tuple[str, str]:
+    if habits_count == 0:
+        return "нет данных", "Добавь одну привычку и отметь её сегодня."
+    if rate >= 85 and missed <= habits_count:
+        return "сильный ритм", "Ничего не усложняй. Сохраняй тот же набор привычек."
+    if rate >= 65:
+        return "рабочий ритм", "Главная точка роста — закрывать дни полностью, а не частично."
+    if rate >= 40:
+        return "нестабильно", "Оставь самые лёгкие привычки сверху и отмечай их в одно и то же время."
+    return "перегруз", "Сократи список до 1-2 привычек на неделю, чтобы вернуть ощущение контроля."
 
 
 def weekly_trend(stats: dict) -> dict:
@@ -237,20 +270,6 @@ def longest_streak_for_dates(dates: set[str]) -> int:
     return best
 
 
-def habit_forecast(habit, rate: int) -> str:
-    _, _, _, streak, _, _, goal_days = habit
-    left = max(goal_days - streak, 0)
-
-    if left == 0:
-        return "цель уже достигнута"
-    if rate < 20:
-        return f"до цели {left} {days_word(left)}; темп пока слишком низкий для прогноза"
-
-    estimated_days = ceil(left / (rate / 100))
-    target_date = datetime.now().date() + timedelta(days=estimated_days)
-    return f"до цели {left} {days_word(left)}; примерно к {target_date.strftime('%d.%m')}"
-
-
 async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
     habits = await get_user_habits(user_id)
     logs = await get_habit_logs(user_id, days=days)
@@ -281,7 +300,6 @@ async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
             "heatmap": heatmap or "⬜",
             "longest_streak": longest_streak_for_dates(completed_dates),
             "status": habit_status(rate, habit[3], habit[5]),
-            "forecast": habit_forecast(habit, rate),
         })
 
     return result
@@ -400,22 +418,6 @@ async def main_summary(user_id: int) -> str:
     return "\n".join(lines)
 
 
-def goal_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="7", callback_data="goal_7"),
-            InlineKeyboardButton(text="14", callback_data="goal_14"),
-            InlineKeyboardButton(text="21", callback_data="goal_21"),
-        ],
-        [
-            InlineKeyboardButton(text="30", callback_data="goal_30"),
-            InlineKeyboardButton(text="60", callback_data="goal_60"),
-            InlineKeyboardButton(text="100", callback_data="goal_100"),
-        ],
-        [InlineKeyboardButton(text="Своя цель", callback_data="goal_custom")],
-    ])
-
-
 def habit_actions_keyboard(habits) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text="➕ Добавить привычку", callback_data="add_habit")]]
 
@@ -482,8 +484,8 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         f"Эта: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
         f"{previous_week_line(trend)}"
         f"Тренд: <b>{trend['label']}</b>\n\n"
-        "🟡 <b>Активность</b>\n"
-        f"{render_heatmap(stats)}\n\n"
+        "🟡 <b>Месяц</b>\n"
+        f"{render_month_calendar(stats)}\n\n"
         "🧠 <b>Вывод</b>\n"
         f"{insight_text(stats)}"
     )
@@ -510,9 +512,9 @@ async def show_habit_stats(callback: types.CallbackQuery):
         text += (
             f"{rate_color(item['rate'])} <b>{habit_name(habit)}</b>\n"
             f"{item['heatmap']} {item['rate']}%\n"
-            f"Серия: {habit[3]}/{habit[6]} · пропусков: {item['missed']}\n"
+            f"Серия: {habit[3]} {days_word(habit[3])} · пропусков: {item['missed']}\n"
             f"Статус: <b>{item['status']}</b>\n"
-            f"Прогноз: {item['forecast']}\n\n"
+            f"Всего выполнений: {habit[4]}\n\n"
         )
 
     await answer_or_edit(callback, text[:3900], InlineKeyboardMarkup(inline_keyboard=[
@@ -535,6 +537,7 @@ async def show_week_review(callback: types.CallbackQuery):
     best_habit = records["best_habit"]
     weak_habit = records["weak_habit"]
     best_streak_item = records["best_streak_item"]
+    grade, recommendation = stability_grade(stats["completion_rate"], stats["missed_days"], stats["habits_count"])
 
     text = (
         "📅 <b>Обзор недели</b>\n\n"
@@ -543,6 +546,8 @@ async def show_week_review(callback: types.CallbackQuery):
         f"Тренд: <b>{trend['label']}</b>\n\n"
         f"Лучший день: <b>{best_day}</b>\n"
         f"Слабый день: <b>{weak_day}</b>\n\n"
+        "🧭 <b>Диагноз ритма</b>\n"
+        f"<b>{grade}</b>\n{recommendation}\n\n"
         "🏁 <b>Личные рекорды</b>\n"
         f"Лучший период 7 дней: <b>{records['best_7_rate']}%</b>\n"
         f"Лучший день: <b>{records['best_day']}</b>\n"
@@ -593,9 +598,9 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     else:
         text += "\n\n<b>Осталось:</b>"
         for habit in unmarked:
-            habit_id, _, _, streak, _, last_date, goal_days = habit
+            habit_id, _, _, streak, _, last_date, _ = habit
             risk = " · 🟡 серия под угрозой" if last_date == yesterday and streak > 0 else ""
-            text += f"\n• <b>{habit_name(habit)}</b> · {streak}/{goal_days}{risk}"
+            text += f"\n• <b>{habit_name(habit)}</b> · серия {streak}{risk}"
             rows.append([
                 InlineKeyboardButton(text=f"✅ {habit[1][:28]}", callback_data=f"mark_{habit_id}")
             ])
@@ -613,11 +618,7 @@ async def process_mark_callback(callback: types.CallbackQuery):
         await callback.answer("Уже отмечено сегодня", show_alert=True)
         return
 
-    alert = "Отмечено"
-    if info["achieved_goal"]:
-        alert += f"\nЦель достигнута: {info['habit_name']}"
-
-    await callback.answer(alert, show_alert=info["achieved_goal"])
+    await callback.answer(f"Отмечено: {info['habit_name']}")
     await show_today(callback, callback.from_user.id)
 
 
@@ -634,13 +635,12 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
     else:
         text = "🟣 <b>Привычки</b>\n"
         for habit in habits:
-            _, _, _, streak, total_completed, last_date, goal_days = habit
-            percent = min(100, round(streak / goal_days * 100)) if goal_days else 0
+            _, _, _, streak, total_completed, last_date, _ = habit
             done_today = " 🟢" if last_date == today_str() else ""
             text += (
                 f"\n<b>{habit_name(habit)}</b>{done_today}\n"
-                f"{progress_bar(percent, 8)} {streak}/{goal_days}\n"
-                f"Всего: {total_completed}\n"
+                f"Серия: {streak} {days_word(streak)} · всего: {total_completed}\n"
+                f"Сегодня: {'отмечено' if last_date == today_str() else 'не отмечено'}\n"
             )
 
     await answer_or_edit(obj, text, habit_actions_keyboard(habits))
@@ -665,66 +665,10 @@ async def new_habit_name(message: types.Message, state: FSMContext):
         await message.answer("Давай короче: до 40 символов.")
         return
 
-    await state.update_data(habit_name=name)
-    await message.answer(
-        f"<b>{escape(name)}</b>\n\nВыбери цель в днях:",
-        parse_mode="HTML",
-        reply_markup=goal_keyboard(),
-    )
-
-
-@router.callback_query(F.data.startswith("goal_"))
-async def process_goal(callback: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    name = data.get("habit_name")
-
-    if not name:
-        await callback.message.edit_text("Не вижу название привычки. Начни заново.")
-        await state.clear()
-        await callback.answer()
-        return
-
-    if callback.data == "goal_custom":
-        await callback.message.edit_text("Введи цель числом, от 1 до 366 дней.")
-        await state.set_state(Form.waiting_custom_goal)
-        await callback.answer()
-        return
-
-    goal_days = int(callback.data.split("_")[1])
-    await save_habit(callback.from_user.id, name, goal_days)
-    await state.clear()
-    await callback.message.edit_text(
-        f"🟢 Готово: <b>{escape(name)}</b>\nЦель: <b>{goal_days} {days_word(goal_days)}</b>.",
-        parse_mode="HTML",
-    )
-    await callback.message.answer("Меню рядом.", reply_markup=main_keyboard)
-    await callback.answer()
-
-
-@router.message(Form.waiting_custom_goal)
-async def process_custom_goal(message: types.Message, state: FSMContext):
-    try:
-        goal_days = int(message.text.strip())
-    except ValueError:
-        await message.answer("Нужно число. Например: 45")
-        return
-
-    if not 1 <= goal_days <= 366:
-        await message.answer("Цель должна быть от 1 до 366 дней.")
-        return
-
-    data = await state.get_data()
-    name = data.get("habit_name")
-
-    if not name:
-        await message.answer("Не вижу название привычки. Начни заново.", reply_markup=main_keyboard)
-        await state.clear()
-        return
-
-    await save_habit(message.from_user.id, name, goal_days)
+    await save_habit(message.from_user.id, name)
     await state.clear()
     await message.answer(
-        f"🟢 Готово: <b>{escape(name)}</b>\nЦель: <b>{goal_days} {days_word(goal_days)}</b>.",
+        f"🟢 Готово: <b>{escape(name)}</b>\nТеперь просто отмечай: есть сегодня или нет.",
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
@@ -885,9 +829,9 @@ async def send_daily_reminder_to_user(user_id: int):
     text = "🟡 <b>Мягкое напоминание</b>\n\n"
 
     for habit in unmarked:
-        habit_id, _, _, streak, _, last_date, goal_days = habit
+        habit_id, _, _, streak, _, last_date, _ = habit
         risk = " · серия под угрозой" if last_date == yesterday and streak > 0 else ""
-        text += f"• <b>{habit_name(habit)}</b> · {streak}/{goal_days}{risk}\n"
+        text += f"• <b>{habit_name(habit)}</b> · серия {streak}{risk}\n"
         rows.append([
             InlineKeyboardButton(text=f"✅ {habit[1][:28]}", callback_data=f"mark_{habit_id}")
         ])

@@ -113,7 +113,7 @@ async def mark_habit_completed(user_id: int, habit_id: int):
 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT last_completed_date, streak, goal_days, habit_name
+            SELECT last_completed_date, streak, habit_name
             FROM habits
             WHERE id = ? AND user_id = ?
         """, (habit_id, user_id))
@@ -122,14 +122,12 @@ async def mark_habit_completed(user_id: int, habit_id: int):
         if not result:
             return False, None
 
-        last_completed, current_streak, goal_days, habit_name = result
+        last_completed, current_streak, habit_name = result
 
         if last_completed == today:
             return False, None
 
         new_streak = current_streak + 1 if last_completed == yesterday_str() else 1
-        achieved_goal = new_streak >= goal_days
-
         await db.execute("""
             INSERT OR IGNORE INTO habit_logs (user_id, habit_id, completed_date, created_at)
             VALUES (?, ?, ?, ?)
@@ -153,8 +151,6 @@ async def mark_habit_completed(user_id: int, habit_id: int):
     return True, {
         "habit_name": habit_name,
         "streak": new_streak,
-        "goal_days": goal_days,
-        "achieved_goal": achieved_goal,
     }
 
 
