@@ -103,7 +103,7 @@ async def get_user_habits(user_id: int):
             SELECT id, habit_name, created_date, streak, total_completed, last_completed_date, goal_days
             FROM habits
             WHERE user_id = ?
-            ORDER BY streak DESC, created_date ASC
+            ORDER BY created_date ASC
         """, (user_id,))
         return await cursor.fetchall()
 
@@ -152,19 +152,6 @@ async def mark_habit_completed(user_id: int, habit_id: int):
         "habit_name": habit_name,
         "streak": new_streak,
     }
-
-
-async def reset_habit_streak(user_id: int, habit_id: int):
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("""
-            UPDATE habits
-            SET streak = 0,
-                last_completed_date = NULL,
-                reset_date = ?
-            WHERE id = ? AND user_id = ?
-        """, (today_str(), habit_id, user_id))
-        await db.commit()
-    return True
 
 
 async def update_habit_name(user_id: int, habit_id: int, new_name: str):
@@ -280,7 +267,6 @@ async def get_user_stats(user_id: int, days: int = 30):
     period_completed = sum(daily_done.values())
     completion_rate = round(period_completed / possible * 100) if possible else 0
     missed_days = recorded_misses
-    best_streak = max((h[3] for h in habits), default=0)
     today_done = daily_done.get(today_str(), 0)
 
     return {
@@ -290,7 +276,6 @@ async def get_user_stats(user_id: int, days: int = 30):
         "possible": possible,
         "completion_rate": completion_rate,
         "missed_days": missed_days,
-        "best_streak": best_streak,
         "today_done": today_done,
         "dates": dates,
         "daily_done": daily_done,

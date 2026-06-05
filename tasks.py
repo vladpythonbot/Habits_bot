@@ -26,21 +26,21 @@ async def daily_reminder_and_reset():
 
         unmarked = []
         for habit in habits:
-            habit_id, habit_name, created_date, streak, total_completed, last_date, _ = habit
+            habit_id, habit_name, created_date, _, total_completed, last_date, _ = habit
 
             if last_date != today:
-                unmarked.append((habit_id, habit_name, streak))
+                unmarked.append((habit_id, habit_name))
 
         if not unmarked:
             continue
 
-        text = "⏰ <b>Напоминание о привычках</b>\n\n"
-        text += "Ты ещё не отметил сегодня:\n\n"
+        text = "⏰ <b>Привычки на сегодня</b>\n\n"
+        text += "Сегодня ещё не отмечено:\n\n"
 
         kb = InlineKeyboardMarkup(inline_keyboard=[])
 
-        for habit_id, habit_name, streak in unmarked:
-            text += f" <b>{habit_name}</b> · серия {streak}\n"
+        for habit_id, habit_name in unmarked:
+            text += f" <b>{habit_name}</b>\n"
             kb.inline_keyboard.append([
                 InlineKeyboardButton(text=f"✅ {habit_name}", callback_data=f"mark_{habit_id}")
             ])

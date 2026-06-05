@@ -1,6 +1,6 @@
 # routers.py
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from html import escape
 from zoneinfo import ZoneInfo
 
@@ -28,12 +28,10 @@ from db import (
     mark_habit_completed,
     parse_date,
     parse_reminder_times,
-    reset_habit_streak,
     save_habit,
     set_reminder_settings,
     today_str,
     update_habit_name,
-    yesterday_str,
 )
 
 router = Router()
@@ -55,14 +53,6 @@ main_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=False,
 )
-
-
-def days_word(value: int) -> str:
-    if value % 10 == 1 and value % 100 != 11:
-        return "день"
-    if value % 10 in [2, 3, 4] and value % 100 not in [12, 13, 14]:
-        return "дня"
-    return "дней"
 
 
 def progress_bar(percent: int, width: int = 10) -> str:
@@ -95,14 +85,12 @@ def rate_color(rate: int) -> str:
     return "🔴"
 
 
-def habit_status(rate: int, streak: int, last_date: str | None) -> str:
-    if last_date == yesterday_str() and streak > 0:
-        return "под угрозой"
+def habit_status(rate: int, last_date: str | None) -> str:
     if rate >= 80:
-        return "стабильная"
+        return "прижилась"
     if rate >= 50:
-        return "неровная"
-    return "проседает"
+        return "закрепляется"
+    return "на старте"
 
 
 def render_heatmap(stats: dict) -> str:
@@ -182,12 +170,12 @@ def stability_grade(rate: int, missed: int, habits_count: int) -> tuple[str, str
     if habits_count == 0:
         return "нет данных", "Добавь одну привычку и отметь её сегодня."
     if rate >= 85 and missed <= habits_count:
-        return "сильный ритм", "Ничего не усложняй. Сохраняй тот же набор привычек."
+        return "хорошо прижилось", "Ничего не усложняй. Сохраняй тот же набор привычек."
     if rate >= 65:
-        return "рабочий ритм", "Главная точка роста — закрывать дни полностью, а не частично."
+        return "ритм формируется", "Лучше укрепить текущий набор, чем добавлять новые привычки."
     if rate >= 40:
-        return "нестабильно", "Оставь самые лёгкие привычки сверху и отмечай их в одно и то же время."
-    return "перегруз", "Сократи список до 1-2 привычек на неделю, чтобы вернуть ощущение контроля."
+        return "привычки ищут место", "Оставь самые лёгкие действия сверху и привяжи их к понятному моменту дня."
+    return "нужно упростить", "На неделю оставь 1-2 самые лёгкие привычки, чтобы ритм появился без давления."
 
 
 def weekly_trend(stats: dict) -> dict:
@@ -252,24 +240,6 @@ def best_and_weak_days(stats: dict) -> tuple[str, str]:
     return best_text, weak_text
 
 
-def longest_streak_for_dates(dates: set[str]) -> int:
-    if not dates:
-        return 0
-
-    ordered = sorted(parse_date(date) for date in dates)
-    best = 1
-    current = 1
-
-    for previous, current_date in zip(ordered, ordered[1:]):
-        if current_date == previous + timedelta(days=1):
-            current += 1
-        else:
-            current = 1
-        best = max(best, current)
-
-    return best
-
-
 async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
     habits = await get_user_habits(user_id)
     logs = await get_habit_logs(user_id, days=days)
@@ -298,8 +268,7 @@ async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
             "missed": missed,
             "rate": rate,
             "heatmap": heatmap or "⬜",
-            "longest_streak": longest_streak_for_dates(completed_dates),
-            "status": habit_status(rate, habit[3], habit[5]),
+            "status": habit_status(rate, habit[5]),
         })
 
     return result
@@ -311,7 +280,6 @@ async def personal_records(user_id: int) -> dict:
 
     best_habit = max(breakdown, key=lambda item: item["rate"], default=None)
     weak_habit = min(breakdown, key=lambda item: item["rate"], default=None)
-    best_streak_item = max(breakdown, key=lambda item: item["longest_streak"], default=None)
 
     best_day_rate = 0
     best_day = "пока нет"
@@ -331,7 +299,6 @@ async def personal_records(user_id: int) -> dict:
     return {
         "best_habit": best_habit,
         "weak_habit": weak_habit,
-        "best_streak_item": best_streak_item,
         "best_day": best_day,
         "best_7_rate": best_7_rate,
     }
@@ -343,7 +310,6 @@ def insight_text(stats: dict) -> str:
     trend = weekly_trend(stats)
     habits_count = stats["habits_count"]
     today_done = stats["today_done"]
-    best_streak = stats["best_streak"]
 
     if stats["possible"] == 0:
         return "Данных пока мало. Дай привычкам пару дней, и анализ станет полезнее."
@@ -353,30 +319,27 @@ def insight_text(stats: dict) -> str:
     if not trend["has_previous"]:
         tips.append("Сравнение с прошлой неделей появится, когда накопится ещё 7 дней данных.")
     elif trend["diff"] <= -15:
-        tips.append("Неделя просела. На завтра лучше выбрать одну главную привычку и закрыть её первой.")
+        tips.append("На этой неделе ритм стал тише. На завтра выбери одну самую лёгкую привычку и отметь её первой.")
     elif trend["diff"] >= 15:
         tips.append("Неделя заметно лучше прошлой. Сохрани тот же объём, пока ритм закрепляется.")
     elif abs(trend["diff"]) <= 5:
-        tips.append("Темп почти не изменился. Маленькое улучшение даст не новая привычка, а меньше пропусков.")
+        tips.append("Темп почти не изменился. Маленькое улучшение даст не новая привычка, а более удобное время для текущих.")
 
     if rate >= 85:
         tips.append("Ритм устойчивый. Сейчас важнее беречь простоту и не добавлять лишнюю нагрузку.")
     elif rate >= 60:
-        tips.append("База хорошая. Главная точка роста — закрывать дни полностью, а не частично.")
+        tips.append("База хорошая. Посмотри, какие привычки легче всего отмечаются, и закрепи их сценарий.")
     elif missed > stats["period_completed"]:
-        tips.append("Пропусков больше, чем выполнений. Стоит временно оставить 1-2 ключевые привычки.")
+        tips.append("Похоже, часть привычек пока не встроилась в день. Стоит временно оставить 1-2 самые простые.")
     else:
-        tips.append("Ритм формируется. Оценивай неделю целиком, а не один неудачный день.")
+        tips.append("Ритм формируется. Смотри на неделю целиком, а не на один отдельный день.")
 
     if habits_count >= 4 and rate < 70:
-        tips.append("Привычек уже много для нестабильного периода. Можно поставить часть на паузу.")
+        tips.append("Привычек уже много для этапа закрепления. Можно оставить только те, которые правда помогают.")
 
     if today_done < habits_count:
         left = habits_count - today_done
-        tips.append(f"На сегодня осталось {left}. Закрой самое короткое действие первым.")
-
-    if best_streak >= 7 and rate < 80:
-        tips.append("Длинная серия уже получалась. Значит проблема не в дисциплине, а в текущей нагрузке.")
+        tips.append(f"Сегодня ещё не отмечено: {left}. Начни с самого короткого действия.")
 
     return "\n".join(f"• {tip}" for tip in tips[:4])
 
@@ -399,21 +362,14 @@ async def main_summary(user_id: int) -> str:
         )
 
     today = today_str()
-    yesterday = yesterday_str()
     done = sum(1 for h in habits if h[5] == today)
-    at_risk = [h for h in habits if h[5] == yesterday and h[3] > 0]
-    best_streak = max((h[3] for h in habits), default=0)
     status, percent = daily_status(done, len(habits))
 
     lines = [
         "🟣 <b>HabitFlow</b>",
         f"{status} Сегодня: <b>{done}/{len(habits)}</b> · {percent}%",
         progress_bar(percent),
-        f"🔥 Лучшая серия: <b>{best_streak} {days_word(best_streak)}</b>",
     ]
-
-    if at_risk:
-        lines.append(f"🟡 Под угрозой: <b>{len(at_risk)}</b>")
 
     return "\n".join(lines)
 
@@ -425,7 +381,6 @@ def habit_actions_keyboard(habits) -> InlineKeyboardMarkup:
         habit_id = habit[0]
         rows.append([
             InlineKeyboardButton(text=f"✏️ {habit[1][:18]}", callback_data=f"edit_{habit_id}"),
-            InlineKeyboardButton(text="🔄 Сброс", callback_data=f"reset_{habit_id}"),
             InlineKeyboardButton(text="🗑", callback_data=f"delete_ask_{habit_id}"),
         ])
 
@@ -478,15 +433,14 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         f"✅ Выполнений: <b>{stats['period_completed']}</b> из {stats['possible']}\n"
         f"📈 Процент: <b>{stats['completion_rate']}%</b>\n"
         f"{progress_bar(stats['completion_rate'])}\n"
-        f"🔥 Лучшая серия: <b>{stats['best_streak']} {days_word(stats['best_streak'])}</b>\n"
-        f"⚠️ Пропущено: <b>{stats['missed_days']}</b>\n\n"
+        f"⚪ Не отмечено: <b>{stats['missed_days']}</b>\n\n"
         "📊 <b>Сравнение недель</b>\n"
         f"Эта: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
         f"{previous_week_line(trend)}"
         f"Тренд: <b>{trend['label']}</b>\n\n"
         "🟡 <b>Месяц</b>\n"
         f"{render_month_calendar(stats)}\n\n"
-        "🧠 <b>Вывод</b>\n"
+        "🧠 <b>Как приживается</b>\n"
         f"{insight_text(stats)}"
     )
 
@@ -506,13 +460,13 @@ async def show_habit_stats(callback: types.CallbackQuery):
         await answer_or_edit(callback, "🟣 <b>По привычкам</b>\n\nПока нет данных.", stats_keyboard())
         return
 
-    text = "🟣 <b>Разбор привычек · 14 дней</b>\n\n"
+    text = "🟣 <b>Как приживаются привычки · 14 дней</b>\n\n"
     for item in breakdown:
         habit = item["habit"]
         text += (
             f"{rate_color(item['rate'])} <b>{habit_name(habit)}</b>\n"
             f"{item['heatmap']} {item['rate']}%\n"
-            f"Серия: {habit[3]} {days_word(habit[3])} · пропусков: {item['missed']}\n"
+            f"Выполнено: {item['done']}/{item['possible']} · не отмечено: {item['missed']}\n"
             f"Статус: <b>{item['status']}</b>\n"
             f"Всего выполнений: {habit[4]}\n\n"
         )
@@ -536,7 +490,6 @@ async def show_week_review(callback: types.CallbackQuery):
 
     best_habit = records["best_habit"]
     weak_habit = records["weak_habit"]
-    best_streak_item = records["best_streak_item"]
     grade, recommendation = stability_grade(stats["completion_rate"], stats["missed_days"], stats["habits_count"])
 
     text = (
@@ -544,26 +497,21 @@ async def show_week_review(callback: types.CallbackQuery):
         f"Эта неделя: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
         f"{previous_week_review_line(trend)}"
         f"Тренд: <b>{trend['label']}</b>\n\n"
-        f"Лучший день: <b>{best_day}</b>\n"
-        f"Слабый день: <b>{weak_day}</b>\n\n"
-        "🧭 <b>Диагноз ритма</b>\n"
+        f"Самый активный день: <b>{best_day}</b>\n"
+        f"Самый тихий день: <b>{weak_day}</b>\n\n"
+        "🧭 <b>Ритм месяца</b>\n"
         f"<b>{grade}</b>\n{recommendation}\n\n"
-        "🏁 <b>Личные рекорды</b>\n"
+        "🏁 <b>Лучшие периоды</b>\n"
         f"Лучший период 7 дней: <b>{records['best_7_rate']}%</b>\n"
-        f"Лучший день: <b>{records['best_day']}</b>\n"
+        f"Самый активный день: <b>{records['best_day']}</b>\n"
     )
 
-    if best_streak_item:
-        text += (
-            f"Самая длинная серия: <b>{best_streak_item['longest_streak']} "
-            f"{days_word(best_streak_item['longest_streak'])}</b> · {habit_name(best_streak_item['habit'])}\n"
-        )
     if best_habit:
-        text += f"Самая стабильная: <b>{habit_name(best_habit['habit'])}</b> · {best_habit['rate']}%\n"
+        text += f"Лучше всего прижилась: <b>{habit_name(best_habit['habit'])}</b> · {best_habit['rate']}%\n"
     if weak_habit:
-        text += f"Зона внимания: <b>{habit_name(weak_habit['habit'])}</b> · {weak_habit['rate']}%\n"
+        text += f"Просит упрощения: <b>{habit_name(weak_habit['habit'])}</b> · {weak_habit['rate']}%\n"
 
-    text += f"\n🧠 <b>Совет</b>\n{insight_text(stats)}"
+    text += f"\n🧠 <b>Мягкий вывод</b>\n{insight_text(stats)}"
 
     await answer_or_edit(callback, text, InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🟣 По привычкам", callback_data="stats_habits")],
@@ -588,7 +536,6 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
         return
 
     today = today_str()
-    yesterday = yesterday_str()
     unmarked = [h for h in habits if h[5] != today]
     rows = []
     text = await main_summary(user_id)
@@ -596,11 +543,10 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     if not unmarked:
         text += "\n\n🟢 Всё отмечено. Хороший день."
     else:
-        text += "\n\n<b>Осталось:</b>"
+        text += "\n\n<b>Сегодня не отмечено:</b>"
         for habit in unmarked:
-            habit_id, _, _, streak, _, last_date, _ = habit
-            risk = " · 🟡 серия под угрозой" if last_date == yesterday and streak > 0 else ""
-            text += f"\n• <b>{habit_name(habit)}</b> · серия {streak}{risk}"
+            habit_id = habit[0]
+            text += f"\n• <b>{habit_name(habit)}</b>"
             rows.append([
                 InlineKeyboardButton(text=f"✅ {habit[1][:28]}", callback_data=f"mark_{habit_id}")
             ])
@@ -635,11 +581,11 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
     else:
         text = "🟣 <b>Привычки</b>\n"
         for habit in habits:
-            _, _, _, streak, total_completed, last_date, _ = habit
+            _, _, _, _, total_completed, last_date, _ = habit
             done_today = " 🟢" if last_date == today_str() else ""
             text += (
                 f"\n<b>{habit_name(habit)}</b>{done_today}\n"
-                f"Серия: {streak} {days_word(streak)} · всего: {total_completed}\n"
+                f"Всего выполнений: {total_completed}\n"
                 f"Сегодня: {'отмечено' if last_date == today_str() else 'не отмечено'}\n"
             )
 
@@ -710,14 +656,6 @@ async def save_new_name(message: types.Message, state: FSMContext):
         await message.answer(f"Переименовано: <b>{escape(new_name)}</b>", parse_mode="HTML", reply_markup=main_keyboard)
     else:
         await message.answer("Не получилось переименовать.", reply_markup=main_keyboard)
-
-
-@router.callback_query(F.data.startswith("reset_"))
-async def reset_habit(callback: types.CallbackQuery):
-    habit_id = int(callback.data.split("_")[1])
-    await reset_habit_streak(callback.from_user.id, habit_id)
-    await callback.answer("Серия сброшена")
-    await show_habits(callback, callback.from_user.id)
 
 
 @router.callback_query(F.data.startswith("delete_ask_"))
@@ -819,19 +757,17 @@ async def send_daily_reminder_to_user(user_id: int):
         return
 
     today = today_str()
-    yesterday = yesterday_str()
     unmarked = [h for h in habits if h[5] != today]
 
     if not unmarked:
         return
 
     rows = []
-    text = "🟡 <b>Мягкое напоминание</b>\n\n"
+    text = "🟡 <b>Мягкое напоминание</b>\n\nСегодня ещё не отмечено:\n\n"
 
     for habit in unmarked:
-        habit_id, _, _, streak, _, last_date, _ = habit
-        risk = " · серия под угрозой" if last_date == yesterday and streak > 0 else ""
-        text += f"• <b>{habit_name(habit)}</b> · серия {streak}{risk}\n"
+        habit_id = habit[0]
+        text += f"• <b>{habit_name(habit)}</b>\n"
         rows.append([
             InlineKeyboardButton(text=f"✅ {habit[1][:28]}", callback_data=f"mark_{habit_id}")
         ])
