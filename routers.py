@@ -38,6 +38,7 @@ router = Router()
 logger = logging.getLogger(__name__)
 
 REMINDER_CHOICES = ["09:00", "12:00", "15:00", "18:00", "21:00"]
+WEEKDAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 
 
 class Form(StatesGroup):
@@ -166,6 +167,53 @@ def completion_for_dates(stats: dict, dates: list[str]) -> tuple[int, int, int]:
     return completed, possible, rate
 
 
+def single_habit_completion(completed_dates: set[str], available_dates: list[str], dates: list[str]) -> tuple[int, int, int]:
+    period_dates = [date for date in dates if date in available_dates]
+    possible = len(period_dates)
+    done = sum(1 for date in period_dates if date in completed_dates)
+    rate = round(done / possible * 100) if possible else 0
+    return done, possible, rate
+
+
+def longest_empty_gap(completed_dates: set[str], available_dates: list[str]) -> int:
+    longest = 0
+    current = 0
+
+    for date in available_dates:
+        if date in completed_dates:
+            current = 0
+        else:
+            current += 1
+            longest = max(longest, current)
+
+    return longest
+
+
+def weekday_profile(completed_dates: set[str], available_dates: list[str]) -> tuple[str, str]:
+    stats: dict[int, list[int]] = {index: [0, 0] for index in range(7)}
+
+    for date in available_dates:
+        weekday = parse_date(date).weekday()
+        stats[weekday][1] += 1
+        if date in completed_dates:
+            stats[weekday][0] += 1
+
+    rates = []
+    for weekday, (done, possible) in stats.items():
+        if possible:
+            rates.append((weekday, round(done / possible * 100), done, possible))
+
+    if not rates:
+        return "пока нет", "пока нет"
+
+    best = max(rates, key=lambda item: (item[1], item[2]))
+    quiet = min(rates, key=lambda item: (item[1], item[2]))
+    return (
+        f"{WEEKDAY_NAMES[best[0]]} · {best[1]}%",
+        f"{WEEKDAY_NAMES[quiet[0]]} · {quiet[1]}%",
+    )
+
+
 def stability_grade(rate: int, missed: int, habits_count: int) -> tuple[str, str]:
     if habits_count == 0:
         return "нет данных", "Добавь одну привычку и отметь её сегодня."
@@ -274,6 +322,127 @@ async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
     return result
 
 
+async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | None:
+    habits = await get_user_habits(user_id)
+    habit = next((item for item in habits if item[0] == habit_id), None)
+    if not habit:
+        return None
+
+    dates = date_range(days)
+    created = parse_date(habit[2])
+    available_dates = [date for date in dates if parse_date(date) >= created]
+    logs = await get_habit_logs(user_id, habit_id=habit_id, days=days)
+    completed_dates = {completed_date for _, completed_date in logs}
+    done = sum(1 for date in available_dates if date in completed_dates)
+    possible = len(available_dates)
+    not_marked = max(possible - done, 0)
+    rate = round(done / possible * 100) if possible else 0
+    current_done, current_possible, current_rate = single_habit_completion(
+        completed_dates,
+        available_dates,
+        dates[-7:],
+    )
+    previous_done, previous_possible, previous_rate = single_habit_completion(
+        completed_dates,
+        available_dates,
+        dates[-14:-7],
+    )
+    best_weekday, quiet_weekday = weekday_profile(completed_dates, available_dates)
+    empty_gap = longest_empty_gap(completed_dates, available_dates)
+
+    calendar = []
+    for date in available_dates[-30:]:
+        mark = "🟩" if date in completed_dates else "⬜"
+        day = datetime.strptime(date, "%Y-%m-%d").strftime("%d")
+        calendar.append(f"{mark}{day}")
+
+    weeks = [" ".join(calendar[index:index + 7]) for index in range(0, len(calendar), 7)]
+    today_done = habit[5] == today_str()
+
+    return {
+        "habit": habit,
+        "done": done,
+        "possible": possible,
+        "not_marked": not_marked,
+        "rate": rate,
+        "current_done": current_done,
+        "current_possible": current_possible,
+        "current_rate": current_rate,
+        "previous_done": previous_done,
+        "previous_possible": previous_possible,
+        "previous_rate": previous_rate,
+        "best_weekday": best_weekday,
+        "quiet_weekday": quiet_weekday,
+        "empty_gap": empty_gap,
+        "calendar": "\n".join(weeks) if weeks else "Пока нет дней для анализа.",
+        "status": habit_status(rate, habit[5]),
+        "today_done": today_done,
+    }
+
+
+def habit_diary_note(item: dict) -> str:
+    rate = item["rate"]
+    if item["possible"] < 7:
+        return (
+            "• Данных пока мало. Отмечай несколько дней, и анализ станет точнее.\n"
+            "• На старте важнее простота: сделай действие настолько маленьким, чтобы его легко было выполнить даже в занятый день."
+        )
+
+    tips = []
+
+    if item["previous_possible"]:
+        diff = item["current_rate"] - item["previous_rate"]
+        if diff >= 20:
+            tips.append("Последние 7 дней заметно лучше прошлых. Не увеличивай сложность, дай привычке закрепиться.")
+        elif diff <= -20:
+            tips.append("Последние 7 дней тише прошлых. Проверь подсказку: где и после какого действия привычка должна начинаться.")
+        else:
+            tips.append("Ритм почти не изменился. Для роста лучше менять не цель, а условия: место, время или напоминание.")
+    else:
+        tips.append("Сравнение с прошлой неделей появится после ещё одной недели данных.")
+
+    if item["empty_gap"] >= 4:
+        tips.append("Есть длинный пустой участок. Поможет план формата: «если наступило X, то я делаю маленькую версию привычки».")
+    elif item["empty_gap"] >= 2:
+        tips.append("Иногда привычка выпадает на несколько дней. Сделай видимую подсказку рядом с местом, где действие начинается.")
+
+    if rate >= 80:
+        tips.append("Привычка хорошо приживается. Добавь маленькую награду после выполнения: галочка, приятная фраза, короткая пауза.")
+    elif rate >= 50:
+        tips.append("Привычка уже появляется в жизни. Лучший следующий шаг — сделать её заметнее и проще, а не требовательнее.")
+    else:
+        tips.append("Пока действие тяжеловато для текущего дня. Уменьши его до версии на 1-2 минуты.")
+
+    tips.append(f"Лучше всего заходит: {item['best_weekday']}. Самый тихий день: {item['quiet_weekday']}.")
+    return "\n".join(f"• {tip}" for tip in tips[:4])
+
+
+def format_habit_diary_text(item: dict) -> str:
+    habit = item["habit"]
+    today_line = "отмечено" if item["today_done"] else "не отмечено"
+    previous_line = (
+        f"{item['previous_rate']}% ({item['previous_done']}/{item['previous_possible']})"
+        if item["previous_possible"]
+        else "пока нет данных"
+    )
+
+    return (
+        f"📖 <b>{habit_name(habit)}</b>\n\n"
+        f"Сегодня: <b>{today_line}</b>\n"
+        f"За месяц: <b>{item['done']}/{item['possible']}</b> · {item['rate']}%\n"
+        f"Последние 7 дней: <b>{item['current_rate']}%</b> ({item['current_done']}/{item['current_possible']})\n"
+        f"Прошлые 7 дней: <b>{previous_line}</b>\n"
+        f"Не отмечено: <b>{item['not_marked']}</b>\n"
+        f"Самый длинный пустой участок: <b>{item['empty_gap']}</b>\n"
+        f"Лучший день недели: <b>{item['best_weekday']}</b>\n"
+        f"Тихий день: <b>{item['quiet_weekday']}</b>\n"
+        f"Всего выполнений: <b>{habit[4]}</b>\n"
+        f"Статус: <b>{item['status']}</b>\n\n"
+        f"🗓 <b>Календарь</b>\n{item['calendar']}\n\n"
+        f"🧠 <b>Анализ</b>\n{habit_diary_note(item)}"
+    )
+
+
 async def personal_records(user_id: int) -> dict:
     stats = await get_user_stats(user_id, days=30)
     breakdown = await habit_breakdown(user_id, days=30)
@@ -380,10 +549,27 @@ def habit_actions_keyboard(habits) -> InlineKeyboardMarkup:
     for habit in habits:
         habit_id = habit[0]
         rows.append([
+            InlineKeyboardButton(text=f"📖 {habit[1][:24]}", callback_data=f"habit_diary_{habit_id}"),
+        ])
+        rows.append([
             InlineKeyboardButton(text=f"✏️ {habit[1][:18]}", callback_data=f"edit_{habit_id}"),
             InlineKeyboardButton(text="🗑", callback_data=f"delete_ask_{habit_id}"),
         ])
 
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def habit_diary_keyboard(habit_id: int, done_today: bool) -> InlineKeyboardMarkup:
+    rows = []
+    if not done_today:
+        rows.append([InlineKeyboardButton(text="✅ Отметить сегодня", callback_data=f"mark_diary_{habit_id}")])
+    rows.extend([
+        [
+            InlineKeyboardButton(text="✏️ Название", callback_data=f"edit_{habit_id}"),
+            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_ask_{habit_id}"),
+        ],
+        [InlineKeyboardButton(text="🟣 Все привычки", callback_data="open_habits")],
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -454,27 +640,50 @@ async def open_stats(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "stats_habits")
 async def show_habit_stats(callback: types.CallbackQuery):
-    breakdown = await habit_breakdown(callback.from_user.id, days=14)
+    habits = await get_user_habits(callback.from_user.id)
 
-    if not breakdown:
+    if not habits:
         await answer_or_edit(callback, "🟣 <b>По привычкам</b>\n\nПока нет данных.", stats_keyboard())
         return
 
-    text = "🟣 <b>Как приживаются привычки · 14 дней</b>\n\n"
-    for item in breakdown:
-        habit = item["habit"]
-        text += (
-            f"{rate_color(item['rate'])} <b>{habit_name(habit)}</b>\n"
-            f"{item['heatmap']} {item['rate']}%\n"
-            f"Выполнено: {item['done']}/{item['possible']} · не отмечено: {item['missed']}\n"
-            f"Статус: <b>{item['status']}</b>\n"
-            f"Всего выполнений: {habit[4]}\n\n"
-        )
+    text = "🟣 <b>Дневник привычек</b>\n\nВыбери привычку, чтобы открыть её отдельный месяц."
+    rows = [
+        [InlineKeyboardButton(text=f"📖 {habit[1][:28]}", callback_data=f"habit_diary_{habit[0]}")]
+        for habit in habits
+    ]
+    rows.append([InlineKeyboardButton(text="🔵 Назад", callback_data="open_stats")])
 
-    await answer_or_edit(callback, text[:3900], InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📅 Обзор недели", callback_data="stats_week")],
-        [InlineKeyboardButton(text="🔵 Назад", callback_data="open_stats")],
-    ]))
+    await answer_or_edit(callback, text, InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("habit_diary_"))
+async def show_habit_diary(callback: types.CallbackQuery):
+    habit_id = int(callback.data.split("_")[-1])
+    item = await habit_diary(callback.from_user.id, habit_id, days=30)
+
+    if not item:
+        await callback.answer("Привычка не найдена", show_alert=True)
+        return
+
+    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"]))
+
+
+@router.callback_query(F.data.startswith("mark_diary_"))
+async def process_mark_diary_callback(callback: types.CallbackQuery):
+    habit_id = int(callback.data.split("_")[-1])
+    success, info = await mark_habit_completed(callback.from_user.id, habit_id)
+
+    if not success:
+        await callback.answer("Уже отмечено сегодня", show_alert=True)
+        return
+
+    await callback.answer(f"Отмечено: {info['habit_name']}")
+    item = await habit_diary(callback.from_user.id, habit_id, days=30)
+    if not item:
+        await show_habits(callback, callback.from_user.id)
+        return
+
+    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"]))
 
 
 @router.callback_query(F.data == "stats_week")
@@ -577,16 +786,15 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
     habits = await get_user_habits(user_id)
 
     if not habits:
-        text = "🟣 <b>Привычки</b>\n\nСписок пуст. Начнём с одной."
+        text = "🟣 <b>Дневник привычек</b>\n\nСписок пуст. Начнём с одной."
     else:
-        text = "🟣 <b>Привычки</b>\n"
+        text = "🟣 <b>Дневник привычек</b>\n\nКаждая привычка ведётся отдельно."
         for habit in habits:
             _, _, _, _, total_completed, last_date, _ = habit
             done_today = " 🟢" if last_date == today_str() else ""
             text += (
-                f"\n<b>{habit_name(habit)}</b>{done_today}\n"
-                f"Всего выполнений: {total_completed}\n"
-                f"Сегодня: {'отмечено' if last_date == today_str() else 'не отмечено'}\n"
+                f"\n📖 <b>{habit_name(habit)}</b>{done_today}\n"
+                f"{'Сегодня отмечено' if last_date == today_str() else 'Сегодня не отмечено'} · всего: {total_completed}\n"
             )
 
     await answer_or_edit(obj, text, habit_actions_keyboard(habits))
