@@ -186,6 +186,31 @@ async def record_habit_miss(user_id: int, habit_id: int, missed_date: str | None
         return cursor.rowcount > 0
 
 
+async def get_missed_habit_ids(user_id: int, missed_date: str | None = None) -> set[int]:
+    missed_date = missed_date or today_str()
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT habit_id
+            FROM habit_misses
+            WHERE user_id = ? AND missed_date = ?
+        """, (user_id, missed_date))
+        rows = await cursor.fetchall()
+        return {row[0] for row in rows}
+
+
+async def is_habit_missed(user_id: int, habit_id: int, missed_date: str | None = None) -> bool:
+    missed_date = missed_date or today_str()
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT 1
+            FROM habit_misses
+            WHERE user_id = ? AND habit_id = ? AND missed_date = ?
+        """, (user_id, habit_id, missed_date))
+        return await cursor.fetchone() is not None
+
+
 async def refresh_missed_streaks(user_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""

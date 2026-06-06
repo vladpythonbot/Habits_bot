@@ -21,13 +21,16 @@ from db import (
     date_range,
     delete_habit_from_db,
     get_habit_logs,
+    get_missed_habit_ids,
     get_reminder_settings,
     get_user_habits,
     get_user_stats,
     get_users_by_reminder_time,
+    is_habit_missed,
     mark_habit_completed,
     parse_date,
     parse_reminder_times,
+    record_habit_miss,
     save_habit,
     set_reminder_settings,
     today_str,
@@ -44,6 +47,7 @@ WEEKDAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 class Form(StatesGroup):
     waiting_habit_name = State()
     waiting_new_name = State()
+    waiting_reminder_time = State()
 
 
 main_keyboard = ReplyKeyboardMarkup(
@@ -92,6 +96,15 @@ def habit_status(rate: int, last_date: str | None) -> str:
     if rate >= 50:
         return "закрепляется"
     return "на старте"
+
+
+def normalize_reminder_time(value: str) -> str | None:
+    value = value.strip().replace(".", ":")
+    try:
+        parsed = datetime.strptime(value, "%H:%M")
+    except ValueError:
+        return None
+    return parsed.strftime("%H:%M")
 
 
 def render_heatmap(stats: dict) -> str:
@@ -358,6 +371,7 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
 
     weeks = [" ".join(calendar[index:index + 7]) for index in range(0, len(calendar), 7)]
     today_done = habit[5] == today_str()
+    today_missed = await is_habit_missed(user_id, habit_id)
 
     return {
         "habit": habit,
@@ -377,6 +391,7 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
         "calendar": "\n".join(weeks) if weeks else "Пока нет дней для анализа.",
         "status": habit_status(rate, habit[5]),
         "today_done": today_done,
+        "today_missed": today_missed,
     }
 
 
@@ -384,8 +399,8 @@ def habit_diary_note(item: dict) -> str:
     rate = item["rate"]
     if item["possible"] < 7:
         return (
-            "• Данных пока мало. Отмечай несколько дней, и анализ станет точнее.\n"
-            "• На старте важнее простота: сделай действие настолько маленьким, чтобы его легко было выполнить даже в занятый день."
+            "• Данных пока мало. Просто отмечай несколько дней.\n"
+            "• Сделай действие маленьким и привяжи к понятному моменту дня."
         )
 
     tips = []
@@ -393,33 +408,37 @@ def habit_diary_note(item: dict) -> str:
     if item["previous_possible"]:
         diff = item["current_rate"] - item["previous_rate"]
         if diff >= 20:
-            tips.append("Последние 7 дней заметно лучше прошлых. Не увеличивай сложность, дай привычке закрепиться.")
+            tips.append("Неделя стала лучше. Не усложняй, пусть ритм закрепится.")
         elif diff <= -20:
-            tips.append("Последние 7 дней тише прошлых. Проверь подсказку: где и после какого действия привычка должна начинаться.")
+            tips.append("Неделя стала тише. Проверь подсказку: где и после чего начинать.")
         else:
-            tips.append("Ритм почти не изменился. Для роста лучше менять не цель, а условия: место, время или напоминание.")
+            tips.append("Ритм ровный. Улучшай условия: место, время или напоминание.")
     else:
-        tips.append("Сравнение с прошлой неделей появится после ещё одной недели данных.")
+        tips.append("Сравнение с прошлой неделей появится позже.")
 
     if item["empty_gap"] >= 4:
-        tips.append("Есть длинный пустой участок. Поможет план формата: «если наступило X, то я делаю маленькую версию привычки».")
+        tips.append("Есть длинная пауза. Поможет план: «если X, то делаю маленькую версию».")
     elif item["empty_gap"] >= 2:
-        tips.append("Иногда привычка выпадает на несколько дней. Сделай видимую подсказку рядом с местом, где действие начинается.")
+        tips.append("Иногда привычка выпадает. Добавь видимую подсказку.")
 
     if rate >= 80:
-        tips.append("Привычка хорошо приживается. Добавь маленькую награду после выполнения: галочка, приятная фраза, короткая пауза.")
+        tips.append("Хорошо приживается. Добавь маленькую награду после выполнения.")
     elif rate >= 50:
-        tips.append("Привычка уже появляется в жизни. Лучший следующий шаг — сделать её заметнее и проще, а не требовательнее.")
+        tips.append("Уже появляется в жизни. Сделай её заметнее и проще.")
     else:
-        tips.append("Пока действие тяжеловато для текущего дня. Уменьши его до версии на 1-2 минуты.")
+        tips.append("Пока тяжеловато. Уменьши действие до 1-2 минут.")
 
-    tips.append(f"Лучше всего заходит: {item['best_weekday']}. Самый тихий день: {item['quiet_weekday']}.")
-    return "\n".join(f"• {tip}" for tip in tips[:4])
+    return "\n".join(f"• {tip}" for tip in tips[:2])
 
 
 def format_habit_diary_text(item: dict) -> str:
     habit = item["habit"]
-    today_line = "отмечено" if item["today_done"] else "не отмечено"
+    if item["today_done"]:
+        today_line = "выполнил"
+    elif item["today_missed"]:
+        today_line = "не сегодня"
+    else:
+        today_line = "не отмечено"
     previous_line = (
         f"{item['previous_rate']}% ({item['previous_done']}/{item['previous_possible']})"
         if item["previous_possible"]
@@ -432,11 +451,8 @@ def format_habit_diary_text(item: dict) -> str:
         f"За месяц: <b>{item['done']}/{item['possible']}</b> · {item['rate']}%\n"
         f"Последние 7 дней: <b>{item['current_rate']}%</b> ({item['current_done']}/{item['current_possible']})\n"
         f"Прошлые 7 дней: <b>{previous_line}</b>\n"
-        f"Не отмечено: <b>{item['not_marked']}</b>\n"
-        f"Самый длинный пустой участок: <b>{item['empty_gap']}</b>\n"
-        f"Лучший день недели: <b>{item['best_weekday']}</b>\n"
-        f"Тихий день: <b>{item['quiet_weekday']}</b>\n"
-        f"Всего выполнений: <b>{habit[4]}</b>\n"
+        f"Дни недели: <b>{item['best_weekday']}</b> / тихо: <b>{item['quiet_weekday']}</b>\n"
+        f"Пауза подряд: <b>{item['empty_gap']}</b>\n"
         f"Статус: <b>{item['status']}</b>\n\n"
         f"🗓 <b>Календарь</b>\n{item['calendar']}\n\n"
         f"🧠 <b>Анализ</b>\n{habit_diary_note(item)}"
@@ -559,10 +575,15 @@ def habit_actions_keyboard(habits) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def habit_diary_keyboard(habit_id: int, done_today: bool) -> InlineKeyboardMarkup:
+def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool) -> InlineKeyboardMarkup:
     rows = []
-    if not done_today:
-        rows.append([InlineKeyboardButton(text="✅ Отметить сегодня", callback_data=f"mark_diary_{habit_id}")])
+    if not done_today and not missed_today:
+        rows.append([
+            InlineKeyboardButton(text="✅ Выполнил", callback_data=f"mark_diary_{habit_id}"),
+            InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_diary_{habit_id}"),
+        ])
+    elif missed_today:
+        rows.append([InlineKeyboardButton(text="✅ Всё-таки выполнил", callback_data=f"mark_diary_{habit_id}")])
     rows.extend([
         [
             InlineKeyboardButton(text="✏️ Название", callback_data=f"edit_{habit_id}"),
@@ -665,7 +686,7 @@ async def show_habit_diary(callback: types.CallbackQuery):
         await callback.answer("Привычка не найдена", show_alert=True)
         return
 
-    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"]))
+    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"]))
 
 
 @router.callback_query(F.data.startswith("mark_diary_"))
@@ -683,7 +704,21 @@ async def process_mark_diary_callback(callback: types.CallbackQuery):
         await show_habits(callback, callback.from_user.id)
         return
 
-    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"]))
+    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"]))
+
+
+@router.callback_query(F.data.startswith("miss_diary_"))
+async def process_miss_diary_callback(callback: types.CallbackQuery):
+    habit_id = int(callback.data.split("_")[-1])
+    await record_habit_miss(callback.from_user.id, habit_id)
+    await callback.answer("Отмечено: не сегодня")
+
+    item = await habit_diary(callback.from_user.id, habit_id, days=30)
+    if not item:
+        await show_habits(callback, callback.from_user.id)
+        return
+
+    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"]))
 
 
 @router.callback_query(F.data == "stats_week")
@@ -745,19 +780,24 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
         return
 
     today = today_str()
-    unmarked = [h for h in habits if h[5] != today]
+    missed_today = await get_missed_habit_ids(user_id)
+    unmarked = [h for h in habits if h[5] != today and h[0] not in missed_today]
     rows = []
     text = await main_summary(user_id)
 
     if not unmarked:
-        text += "\n\n🟢 Всё отмечено. Хороший день."
+        if missed_today:
+            text += "\n\n🟢 На сегодня всё решено."
+        else:
+            text += "\n\n🟢 Всё отмечено. Хороший день."
     else:
         text += "\n\n<b>Сегодня не отмечено:</b>"
         for habit in unmarked:
             habit_id = habit[0]
             text += f"\n• <b>{habit_name(habit)}</b>"
             rows.append([
-                InlineKeyboardButton(text=f"✅ {habit[1][:28]}", callback_data=f"mark_{habit_id}")
+                InlineKeyboardButton(text=f"✅ {habit[1][:20]}", callback_data=f"mark_{habit_id}"),
+                InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_{habit_id}"),
             ])
 
     rows.append([InlineKeyboardButton(text="➕ Добавить", callback_data="add_habit")])
@@ -774,6 +814,14 @@ async def process_mark_callback(callback: types.CallbackQuery):
         return
 
     await callback.answer(f"Отмечено: {info['habit_name']}")
+    await show_today(callback, callback.from_user.id)
+
+
+@router.callback_query(F.data.startswith("miss_"))
+async def process_miss_callback(callback: types.CallbackQuery):
+    habit_id = int(callback.data.split("_")[-1])
+    await record_habit_miss(callback.from_user.id, habit_id)
+    await callback.answer("Отмечено: не сегодня")
     await show_today(callback, callback.from_user.id)
 
 
@@ -906,7 +954,7 @@ async def show_settings(obj: types.Message | types.CallbackQuery, user_id: int):
         "⚙️ <b>Настройки</b>\n\n"
         f"Напоминания: <b>{status}</b>\n"
         f"Время: <b>{', '.join(times)}</b>\n\n"
-        "Можно выбрать несколько времён."
+        "Выбери готовое время или добавь своё в формате 07:30."
     )
 
     rows = [[
@@ -916,7 +964,7 @@ async def show_settings(obj: types.Message | types.CallbackQuery, user_id: int):
         )
     ]]
 
-    for reminder_time in REMINDER_CHOICES:
+    for reminder_time in sorted(set(REMINDER_CHOICES) | set(times)):
         mark = "✅" if reminder_time in times else "➕"
         rows.append([
             InlineKeyboardButton(
@@ -924,6 +972,8 @@ async def show_settings(obj: types.Message | types.CallbackQuery, user_id: int):
                 callback_data=f"rem_time_{reminder_time.replace(':', '')}",
             )
         ])
+
+    rows.append([InlineKeyboardButton(text="➕ Своё время", callback_data="rem_custom")])
 
     await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
@@ -959,13 +1009,47 @@ async def toggle_reminder_time(callback: types.CallbackQuery):
     await show_settings(callback, callback.from_user.id)
 
 
+@router.callback_query(F.data == "rem_custom")
+async def custom_reminder_time(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("Напиши время напоминания в формате <b>07:30</b>.", parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(Form.waiting_reminder_time)
+    await callback.answer()
+
+
+@router.message(Form.waiting_reminder_time)
+async def save_custom_reminder_time(message: types.Message, state: FSMContext):
+    reminder_time = normalize_reminder_time(message.text)
+
+    if not reminder_time:
+        await message.answer("Не понял время. Напиши так: <b>07:30</b> или <b>21:05</b>.", parse_mode="HTML")
+        return
+
+    settings = await get_reminder_settings(message.from_user.id)
+    times = set(parse_reminder_times(settings["reminder_time"]))
+    times.add(reminder_time)
+
+    await set_reminder_settings(
+        message.from_user.id,
+        enabled=True,
+        reminder_time=",".join(sorted(times)),
+    )
+    await state.clear()
+    await message.answer(
+        f"Готово. Напоминание добавлено: <b>{reminder_time}</b>",
+        parse_mode="HTML",
+        reply_markup=main_keyboard,
+    )
+    await show_settings(message, message.from_user.id)
+
+
 async def send_daily_reminder_to_user(user_id: int):
     habits = await get_user_habits(user_id)
     if not habits:
         return
 
     today = today_str()
-    unmarked = [h for h in habits if h[5] != today]
+    missed_today = await get_missed_habit_ids(user_id)
+    unmarked = [h for h in habits if h[5] != today and h[0] not in missed_today]
 
     if not unmarked:
         return
@@ -977,7 +1061,8 @@ async def send_daily_reminder_to_user(user_id: int):
         habit_id = habit[0]
         text += f"• <b>{habit_name(habit)}</b>\n"
         rows.append([
-            InlineKeyboardButton(text=f"✅ {habit[1][:28]}", callback_data=f"mark_{habit_id}")
+            InlineKeyboardButton(text=f"✅ {habit[1][:20]}", callback_data=f"mark_{habit_id}"),
+            InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_{habit_id}"),
         ])
 
     try:
