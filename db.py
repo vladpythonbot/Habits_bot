@@ -255,6 +255,8 @@ async def refresh_missed_streaks(user_id: int):
 async def get_user_stats(user_id: int, days: int = 30):
     habits = await get_user_habits(user_id)
     dates = date_range(days)
+    today = today_str()
+    completed_dates = [date for date in dates if date != today]
     first_date = dates[0]
 
     async with aiosqlite.connect(DB_NAME) as db:
@@ -285,14 +287,14 @@ async def get_user_stats(user_id: int, days: int = 30):
 
     for habit in habits:
         created = parse_date(habit[2])
-        for date in dates:
+        for date in completed_dates:
             if parse_date(date) >= created:
                 possible += 1
 
-    period_completed = sum(daily_done.values())
+    period_completed = sum(count for date, count in daily_done.items() if date in completed_dates)
     completion_rate = round(period_completed / possible * 100) if possible else 0
     missed_days = recorded_misses
-    today_done = daily_done.get(today_str(), 0)
+    today_done = daily_done.get(today, 0)
 
     return {
         "habits_count": len(habits),

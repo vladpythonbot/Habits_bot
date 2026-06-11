@@ -111,7 +111,8 @@ def render_heatmap(stats: dict) -> str:
     habits_count = max(stats["habits_count"], 1)
     cells = []
 
-    for date in stats["dates"]:
+    closed_dates = completed_analysis_dates(stats["dates"])
+    for date in closed_dates:
         done = stats["daily_done"].get(date, 0)
         ratio = done / habits_count
         if done == 0:
@@ -180,6 +181,11 @@ def completion_for_dates(stats: dict, dates: list[str]) -> tuple[int, int, int]:
     return completed, possible, rate
 
 
+def completed_analysis_dates(dates: list[str]) -> list[str]:
+    today = today_str()
+    return [date for date in dates if date != today]
+
+
 def single_habit_completion(completed_dates: set[str], available_dates: list[str], dates: list[str]) -> tuple[int, int, int]:
     period_dates = [date for date in dates if date in available_dates]
     possible = len(period_dates)
@@ -240,8 +246,9 @@ def stability_grade(rate: int, missed: int, habits_count: int) -> tuple[str, str
 
 
 def weekly_trend(stats: dict) -> dict:
-    current_dates = stats["dates"][-7:]
-    previous_dates = stats["dates"][-14:-7]
+    closed_dates = completed_analysis_dates(stats["dates"])
+    current_dates = closed_dates[-7:]
+    previous_dates = closed_dates[-14:-7]
     current_done, current_possible, current_rate = completion_for_dates(stats, current_dates)
     previous_done, previous_possible, previous_rate = completion_for_dates(stats, previous_dates)
     diff = current_rate - previous_rate
@@ -283,7 +290,7 @@ def previous_week_review_line(trend: dict) -> str:
 
 
 def best_and_weak_days(stats: dict) -> tuple[str, str]:
-    dates = stats["dates"][-7:]
+    dates = completed_analysis_dates(stats["dates"])[-7:]
     day_rates = []
 
     for date in dates:
@@ -304,7 +311,7 @@ def best_and_weak_days(stats: dict) -> tuple[str, str]:
 async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
     habits = await get_user_habits(user_id)
     logs = await get_habit_logs(user_id, days=days)
-    dates = date_range(days)
+    dates = completed_analysis_dates(date_range(days))
     completed_by_habit: dict[int, set[str]] = {}
 
     for habit_id, completed_date in logs:
@@ -344,24 +351,25 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
     dates = date_range(days)
     created = parse_date(habit[2])
     available_dates = [date for date in dates if parse_date(date) >= created]
+    closed_available_dates = completed_analysis_dates(available_dates)
     logs = await get_habit_logs(user_id, habit_id=habit_id, days=days)
     completed_dates = {completed_date for _, completed_date in logs}
-    done = sum(1 for date in available_dates if date in completed_dates)
-    possible = len(available_dates)
+    done = sum(1 for date in closed_available_dates if date in completed_dates)
+    possible = len(closed_available_dates)
     not_marked = max(possible - done, 0)
     rate = round(done / possible * 100) if possible else 0
     current_done, current_possible, current_rate = single_habit_completion(
         completed_dates,
-        available_dates,
-        dates[-7:],
+        closed_available_dates,
+        closed_available_dates[-7:],
     )
     previous_done, previous_possible, previous_rate = single_habit_completion(
         completed_dates,
-        available_dates,
-        dates[-14:-7],
+        closed_available_dates,
+        closed_available_dates[-14:-7],
     )
-    best_weekday, quiet_weekday = weekday_profile(completed_dates, available_dates)
-    empty_gap = longest_empty_gap(completed_dates, available_dates)
+    best_weekday, quiet_weekday = weekday_profile(completed_dates, closed_available_dates)
+    empty_gap = longest_empty_gap(completed_dates, closed_available_dates)
 
     calendar = []
     for date in available_dates[-30:]:
@@ -448,8 +456,8 @@ def format_habit_diary_text(item: dict) -> str:
     return (
         f"📖 <b>{habit_name(habit)}</b>\n\n"
         f"Сегодня: <b>{today_line}</b>\n"
-        f"За месяц: <b>{item['done']}/{item['possible']}</b> · {item['rate']}%\n"
-        f"Последние 7 дней: <b>{item['current_rate']}%</b> ({item['current_done']}/{item['current_possible']})\n"
+        f"За месяц без сегодня: <b>{item['done']}/{item['possible']}</b> · {item['rate']}%\n"
+        f"Последние 7 завершённых дней: <b>{item['current_rate']}%</b> ({item['current_done']}/{item['current_possible']})\n"
         f"Прошлые 7 дней: <b>{previous_line}</b>\n"
         f"Дни недели: <b>{item['best_weekday']}</b> / тихо: <b>{item['quiet_weekday']}</b>\n"
         f"Пауза подряд: <b>{item['empty_gap']}</b>\n"
@@ -475,8 +483,8 @@ async def personal_records(user_id: int) -> dict:
             best_day = f"{datetime.strptime(date, '%Y-%m-%d').strftime('%d.%m')} · {rate}%"
 
     best_7_rate = 0
-    for index in range(0, max(len(stats["dates"]) - 6, 0)):
-        window = stats["dates"][index:index + 7]
+    for index in range(0, max(len(closed_dates) - 6, 0)):
+        window = closed_dates[index:index + 7]
         _, possible, rate = completion_for_dates(stats, window)
         if possible:
             best_7_rate = max(best_7_rate, rate)
@@ -636,13 +644,13 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
 
     trend = weekly_trend(stats)
     text = (
-        "🔵 <b>Статистика за 30 дней</b>\n\n"
+        "🔵 <b>Статистика за 30 дней без сегодня</b>\n\n"
         f"✅ Выполнений: <b>{stats['period_completed']}</b> из {stats['possible']}\n"
         f"📈 Процент: <b>{stats['completion_rate']}%</b>\n"
         f"{progress_bar(stats['completion_rate'])}\n"
         f"⚪ Не отмечено: <b>{stats['missed_days']}</b>\n\n"
-        "📊 <b>Сравнение недель</b>\n"
-        f"Эта: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
+        "📊 <b>Сравнение завершённых дней</b>\n"
+        f"Последние 7 дней: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
         f"{previous_week_line(trend)}"
         f"Тренд: <b>{trend['label']}</b>\n\n"
         "🟡 <b>Месяц</b>\n"
@@ -738,7 +746,7 @@ async def show_week_review(callback: types.CallbackQuery):
 
     text = (
         "📅 <b>Обзор недели</b>\n\n"
-        f"Эта неделя: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
+        f"Последние 7 завершённых дней: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
         f"{previous_week_review_line(trend)}"
         f"Тренд: <b>{trend['label']}</b>\n\n"
         f"Самый активный день: <b>{best_day}</b>\n"
