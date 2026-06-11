@@ -233,16 +233,32 @@ def weekday_profile(completed_dates: set[str], available_dates: list[str]) -> tu
     )
 
 
-def stability_grade(rate: int, missed: int, habits_count: int) -> tuple[str, str]:
-    if habits_count == 0:
-        return "нет данных", "Добавь одну привычку и отметь её сегодня."
-    if rate >= 85 and missed <= habits_count:
-        return "хорошо прижилось", "Ничего не усложняй. Сохраняй тот же набор привычек."
-    if rate >= 65:
-        return "ритм формируется", "Лучше укрепить текущий набор, чем добавлять новые привычки."
-    if rate >= 40:
-        return "привычки ищут место", "Оставь самые лёгкие действия сверху и привяжи их к понятному моменту дня."
-    return "нужно упростить", "На неделю оставь 1-2 самые лёгкие привычки, чтобы ритм появился без давления."
+def short_cell(value: str, limit: int = 14) -> str:
+    value = str(value).strip()
+    return value if len(value) <= limit else value[:limit - 1] + "…"
+
+
+def sheet_table(headers: list[str], rows: list[list[str]]) -> str:
+    table = [headers, *rows]
+    widths = [
+        min(max(len(str(row[index])) for row in table), 18)
+        for index in range(len(headers))
+    ]
+    lines = []
+    for index, row in enumerate(table):
+        line = "  ".join(str(cell).ljust(widths[column])[:widths[column]] for column, cell in enumerate(row))
+        lines.append(line)
+        if index == 0:
+            lines.append("  ".join("─" * width for width in widths))
+    return "<pre>" + escape("\n".join(lines)) + "</pre>"
+
+
+def trend_symbol(diff: int) -> str:
+    if diff > 0:
+        return f"+{diff}%"
+    if diff < 0:
+        return f"{diff}%"
+    return "0%"
 
 
 def weekly_trend(stats: dict) -> dict:
@@ -273,20 +289,6 @@ def weekly_trend(stats: dict) -> dict:
         "diff": diff,
         "label": label,
     }
-
-
-def previous_week_line(trend: dict) -> str:
-    if not trend["has_previous"]:
-        return "Прошлая: <b>пока нет данных</b>\n"
-
-    return f"Прошлая: <b>{trend['previous_rate']}%</b> ({trend['previous_done']}/{trend['previous_possible']})\n"
-
-
-def previous_week_review_line(trend: dict) -> str:
-    if not trend["has_previous"]:
-        return "Прошлая неделя: <b>пока нет данных</b>\n"
-
-    return f"Прошлая неделя: <b>{trend['previous_rate']}%</b> ({trend['previous_done']}/{trend['previous_possible']})\n"
 
 
 def best_and_weak_days(stats: dict) -> tuple[str, str]:
@@ -403,67 +405,13 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
     }
 
 
-def habit_diary_note(item: dict) -> str:
-    rate = item["rate"]
-    if item["possible"] < 7:
-        return (
-            "• Данных пока мало. Просто отмечай несколько дней.\n"
-            "• Сделай действие маленьким и привяжи к понятному моменту дня."
-        )
-
-    tips = []
-
-    if item["previous_possible"]:
-        diff = item["current_rate"] - item["previous_rate"]
-        if diff >= 20:
-            tips.append("Неделя стала лучше. Не усложняй, пусть ритм закрепится.")
-        elif diff <= -20:
-            tips.append("Неделя стала тише. Проверь подсказку: где и после чего начинать.")
-        else:
-            tips.append("Ритм ровный. Улучшай условия: место, время или напоминание.")
-    else:
-        tips.append("Сравнение с прошлой неделей появится позже.")
-
-    if item["empty_gap"] >= 4:
-        tips.append("Есть длинная пауза. Поможет план: «если X, то делаю маленькую версию».")
-    elif item["empty_gap"] >= 2:
-        tips.append("Иногда привычка выпадает. Добавь видимую подсказку.")
-
-    if rate >= 80:
-        tips.append("Хорошо приживается. Добавь маленькую награду после выполнения.")
-    elif rate >= 50:
-        tips.append("Уже появляется в жизни. Сделай её заметнее и проще.")
-    else:
-        tips.append("Пока тяжеловато. Уменьши действие до 1-2 минут.")
-
-    return "\n".join(f"• {tip}" for tip in tips[:2])
-
-
 def format_habit_diary_text(item: dict) -> str:
     habit = item["habit"]
-    if item["today_done"]:
-        today_line = "выполнил"
-    elif item["today_missed"]:
-        today_line = "не сегодня"
-    else:
-        today_line = "не отмечено"
-    previous_line = (
-        f"{item['previous_rate']}% ({item['previous_done']}/{item['previous_possible']})"
-        if item["previous_possible"]
-        else "пока нет данных"
-    )
-
     return (
         f"📖 <b>{habit_name(habit)}</b>\n\n"
-        f"Сегодня: <b>{today_line}</b>\n"
-        f"За месяц без сегодня: <b>{item['done']}/{item['possible']}</b> · {item['rate']}%\n"
-        f"Последние 7 завершённых дней: <b>{item['current_rate']}%</b> ({item['current_done']}/{item['current_possible']})\n"
-        f"Прошлые 7 дней: <b>{previous_line}</b>\n"
-        f"Дни недели: <b>{item['best_weekday']}</b> / тихо: <b>{item['quiet_weekday']}</b>\n"
-        f"Пауза подряд: <b>{item['empty_gap']}</b>\n"
-        f"Статус: <b>{item['status']}</b>\n\n"
+        f"📊 <b>Таблица</b>\n{habit_detail_sheet(item)}\n\n"
         f"🗓 <b>Календарь</b>\n{item['calendar']}\n\n"
-        f"🧠 <b>Анализ</b>\n{habit_diary_note(item)}"
+        "Сегодня не входит в проценты, пока день не закончился."
     )
 
 
@@ -476,7 +424,8 @@ async def personal_records(user_id: int) -> dict:
 
     best_day_rate = 0
     best_day = "пока нет"
-    for date in stats["dates"]:
+    closed_dates = completed_analysis_dates(stats["dates"])
+    for date in closed_dates:
         _, possible, rate = completion_for_dates(stats, [date])
         if possible and rate >= best_day_rate:
             best_day_rate = rate
@@ -497,44 +446,47 @@ async def personal_records(user_id: int) -> dict:
     }
 
 
-def insight_text(stats: dict) -> str:
-    rate = stats["completion_rate"]
-    missed = stats["missed_days"]
-    trend = weekly_trend(stats)
-    habits_count = stats["habits_count"]
-    today_done = stats["today_done"]
+def overview_sheet(stats: dict, trend: dict) -> str:
+    rows = [
+        ["Привычек", str(stats["habits_count"])],
+        ["Сегодня", f"{stats['today_done']}/{stats['habits_count']}"],
+        ["30 дней", f"{stats['period_completed']}/{stats['possible']}"],
+        ["% 30 дней", f"{stats['completion_rate']}%"],
+        ["7 дней", f"{trend['current_done']}/{trend['current_possible']} · {trend['current_rate']}%"],
+        ["Прошлые 7", f"{trend['previous_done']}/{trend['previous_possible']} · {trend['previous_rate']}%" if trend["has_previous"] else "нет данных"],
+        ["Разница", trend_symbol(trend["diff"]) if trend["has_previous"] else "нет данных"],
+        ["Пропуски", str(stats["missed_days"])],
+    ]
+    return sheet_table(["Метрика", "Значение"], rows)
 
-    if stats["possible"] == 0:
-        return "Данных пока мало. Дай привычкам пару дней, и анализ станет полезнее."
 
-    tips = []
+def habits_sheet(breakdown: list[dict]) -> str:
+    if not breakdown:
+        return "<pre>Нет данных</pre>"
 
-    if not trend["has_previous"]:
-        tips.append("Сравнение с прошлой неделей появится, когда накопится ещё 7 дней данных.")
-    elif trend["diff"] <= -15:
-        tips.append("На этой неделе ритм стал тише. На завтра выбери одну самую лёгкую привычку и отметь её первой.")
-    elif trend["diff"] >= 15:
-        tips.append("Неделя заметно лучше прошлой. Сохрани тот же объём, пока ритм закрепляется.")
-    elif abs(trend["diff"]) <= 5:
-        tips.append("Темп почти не изменился. Маленькое улучшение даст не новая привычка, а более удобное время для текущих.")
+    rows = []
+    for item in sorted(breakdown, key=lambda row: row["rate"], reverse=True):
+        rows.append([
+            short_cell(habit_name(item["habit"]), 16),
+            f"{item['rate']}%",
+            f"{item['done']}/{item['possible']}",
+            str(item["missed"]),
+            item["heatmap"][-10:],
+        ])
+    return sheet_table(["Привычка", "%", "Вып", "Нет", "10д"], rows)
 
-    if rate >= 85:
-        tips.append("Ритм устойчивый. Сейчас важнее беречь простоту и не добавлять лишнюю нагрузку.")
-    elif rate >= 60:
-        tips.append("База хорошая. Посмотри, какие привычки легче всего отмечаются, и закрепи их сценарий.")
-    elif missed > stats["period_completed"]:
-        tips.append("Похоже, часть привычек пока не встроилась в день. Стоит временно оставить 1-2 самые простые.")
-    else:
-        tips.append("Ритм формируется. Смотри на неделю целиком, а не на один отдельный день.")
 
-    if habits_count >= 4 and rate < 70:
-        tips.append("Привычек уже много для этапа закрепления. Можно оставить только те, которые правда помогают.")
-
-    if today_done < habits_count:
-        left = habits_count - today_done
-        tips.append(f"Сегодня ещё не отмечено: {left}. Начни с самого короткого действия.")
-
-    return "\n".join(f"• {tip}" for tip in tips[:4])
+def habit_detail_sheet(item: dict) -> str:
+    rows = [
+        ["Сегодня", "выполнил" if item["today_done"] else ("не сегодня" if item["today_missed"] else "не отмечено")],
+        ["30 дней", f"{item['done']}/{item['possible']} · {item['rate']}%"],
+        ["7 дней", f"{item['current_done']}/{item['current_possible']} · {item['current_rate']}%"],
+        ["Прошлые 7", f"{item['previous_done']}/{item['previous_possible']} · {item['previous_rate']}%" if item["previous_possible"] else "нет данных"],
+        ["Пауза", str(item["empty_gap"])],
+        ["Лучший день", item["best_weekday"]],
+        ["Тихий день", item["quiet_weekday"]],
+    ]
+    return sheet_table(["Метрика", "Значение"], rows)
 
 
 async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
@@ -643,20 +595,14 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         return
 
     trend = weekly_trend(stats)
+    breakdown = await habit_breakdown(user_id, days=30)
     text = (
         "🔵 <b>Статистика за 30 дней без сегодня</b>\n\n"
-        f"✅ Выполнений: <b>{stats['period_completed']}</b> из {stats['possible']}\n"
-        f"📈 Процент: <b>{stats['completion_rate']}%</b>\n"
-        f"{progress_bar(stats['completion_rate'])}\n"
-        f"⚪ Не отмечено: <b>{stats['missed_days']}</b>\n\n"
-        "📊 <b>Сравнение завершённых дней</b>\n"
-        f"Последние 7 дней: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
-        f"{previous_week_line(trend)}"
-        f"Тренд: <b>{trend['label']}</b>\n\n"
+        f"{overview_sheet(stats, trend)}\n\n"
+        "🟣 <b>По привычкам</b>\n"
+        f"{habits_sheet(breakdown)}\n\n"
         "🟡 <b>Месяц</b>\n"
-        f"{render_month_calendar(stats)}\n\n"
-        "🧠 <b>Как приживается</b>\n"
-        f"{insight_text(stats)}"
+        f"{render_month_calendar(stats)}"
     )
 
     await answer_or_edit(obj, text, stats_keyboard())
@@ -675,7 +621,12 @@ async def show_habit_stats(callback: types.CallbackQuery):
         await answer_or_edit(callback, "🟣 <b>По привычкам</b>\n\nПока нет данных.", stats_keyboard())
         return
 
-    text = "🟣 <b>Дневник привычек</b>\n\nВыбери привычку, чтобы открыть её отдельный месяц."
+    breakdown = await habit_breakdown(callback.from_user.id, days=30)
+    text = (
+        "🟣 <b>Таблица привычек</b>\n\n"
+        f"{habits_sheet(breakdown)}\n\n"
+        "Выбери привычку, чтобы открыть её отдельный месяц."
+    )
     rows = [
         [InlineKeyboardButton(text=f"📖 {habit[1][:28]}", callback_data=f"habit_diary_{habit[0]}")]
         for habit in habits
@@ -740,30 +691,22 @@ async def show_week_review(callback: types.CallbackQuery):
         await answer_or_edit(callback, "📅 <b>Обзор недели</b>\n\nПока нет данных.", stats_keyboard())
         return
 
-    best_habit = records["best_habit"]
-    weak_habit = records["weak_habit"]
-    grade, recommendation = stability_grade(stats["completion_rate"], stats["missed_days"], stats["habits_count"])
+    breakdown = await habit_breakdown(callback.from_user.id, days=30)
+    week_sheet = sheet_table(["Метрика", "Значение"], [
+        ["7 дней", f"{trend['current_done']}/{trend['current_possible']} · {trend['current_rate']}%"],
+        ["Прошлые 7", f"{trend['previous_done']}/{trend['previous_possible']} · {trend['previous_rate']}%" if trend["has_previous"] else "нет данных"],
+        ["Разница", trend_symbol(trend["diff"]) if trend["has_previous"] else "нет данных"],
+        ["Лучший день", best_day],
+        ["Тихий день", weak_day],
+        ["Лучшие 7д", f"{records['best_7_rate']}%"],
+    ])
 
     text = (
         "📅 <b>Обзор недели</b>\n\n"
-        f"Последние 7 завершённых дней: <b>{trend['current_rate']}%</b> ({trend['current_done']}/{trend['current_possible']})\n"
-        f"{previous_week_review_line(trend)}"
-        f"Тренд: <b>{trend['label']}</b>\n\n"
-        f"Самый активный день: <b>{best_day}</b>\n"
-        f"Самый тихий день: <b>{weak_day}</b>\n\n"
-        "🧭 <b>Ритм месяца</b>\n"
-        f"<b>{grade}</b>\n{recommendation}\n\n"
-        "🏁 <b>Лучшие периоды</b>\n"
-        f"Лучший период 7 дней: <b>{records['best_7_rate']}%</b>\n"
-        f"Самый активный день: <b>{records['best_day']}</b>\n"
+        f"{week_sheet}\n\n"
+        "🟣 <b>По привычкам</b>\n"
+        f"{habits_sheet(breakdown)}"
     )
-
-    if best_habit:
-        text += f"Лучше всего прижилась: <b>{habit_name(best_habit['habit'])}</b> · {best_habit['rate']}%\n"
-    if weak_habit:
-        text += f"Просит упрощения: <b>{habit_name(weak_habit['habit'])}</b> · {weak_habit['rate']}%\n"
-
-    text += f"\n🧠 <b>Мягкий вывод</b>\n{insight_text(stats)}"
 
     await answer_or_edit(callback, text, InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🟣 По привычкам", callback_data="stats_habits")],
