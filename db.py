@@ -77,6 +77,16 @@ async def init_db():
         """)
 
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS habit_reminders (
+                user_id INTEGER NOT NULL,
+                habit_id INTEGER NOT NULL,
+                enabled BOOLEAN DEFAULT 1,
+                reminder_time TEXT NOT NULL,
+                PRIMARY KEY(user_id, habit_id)
+            )
+        """)
+
+        await db.execute("""
             INSERT OR IGNORE INTO habit_logs (user_id, habit_id, completed_date, created_at)
             SELECT user_id, id, last_completed_date, datetime('now')
             FROM habits
@@ -169,6 +179,7 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("DELETE FROM habit_logs WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
         await db.execute("DELETE FROM habit_misses WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
+        await db.execute("DELETE FROM habit_reminders WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
         await db.execute("DELETE FROM habits WHERE id = ? AND user_id = ?", (habit_id, user_id))
         await db.commit()
     return True
@@ -376,6 +387,64 @@ async def get_users_by_reminder_time(reminder_time: str):
         for user_id, times in rows
         if reminder_time in parse_reminder_times(times)
     ]
+
+
+async def set_habit_reminder(user_id: int, habit_id: int, reminder_time: str, enabled: bool = True) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT 1
+            FROM habits
+            WHERE user_id = ? AND id = ?
+        """, (user_id, habit_id))
+        if not await cursor.fetchone():
+            return False
+
+        await db.execute("""
+            INSERT INTO habit_reminders (user_id, habit_id, enabled, reminder_time)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, habit_id) DO UPDATE SET
+                enabled = excluded.enabled,
+                reminder_time = excluded.reminder_time
+        """, (user_id, habit_id, enabled, reminder_time))
+        await db.commit()
+        return True
+
+
+async def disable_habit_reminder(user_id: int, habit_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            UPDATE habit_reminders
+            SET enabled = 0
+            WHERE user_id = ? AND habit_id = ?
+        """, (user_id, habit_id))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def get_habit_reminder(user_id: int, habit_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT enabled, reminder_time
+            FROM habit_reminders
+            WHERE user_id = ? AND habit_id = ?
+        """, (user_id, habit_id))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+
+        return {"enabled": bool(row[0]), "reminder_time": row[1]}
+
+
+async def get_due_habit_reminders(reminder_time: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT h.user_id, h.id, h.habit_name, h.last_completed_date
+            FROM habit_reminders AS r
+            JOIN habits AS h
+                ON h.user_id = r.user_id AND h.id = r.habit_id
+            WHERE r.enabled = 1 AND r.reminder_time = ?
+        """, (reminder_time,))
+        return await cursor.fetchall()
 
 
 def parse_reminder_times(value: str | None) -> list[str]:
