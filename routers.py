@@ -112,6 +112,19 @@ def normalize_reminder_time(value: str) -> str | None:
     return parsed.strftime("%H:%M")
 
 
+def normalize_reminder_times(value: str) -> list[str]:
+    raw_items = value.replace(",", " ").replace(";", " ").split()
+    times = []
+
+    for item in raw_items:
+        reminder_time = normalize_reminder_time(item)
+        if not reminder_time:
+            return []
+        times.append(reminder_time)
+
+    return sorted(set(times))
+
+
 def render_heatmap(stats: dict) -> str:
     habits_count = max(stats["habits_count"], 1)
     cells = []
@@ -562,19 +575,9 @@ def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool) ->
 
 def habit_reminder_keyboard(habit_id: int, reminder: dict | None) -> InlineKeyboardMarkup:
     rows = []
-    selected = reminder["reminder_time"] if reminder and reminder["enabled"] else None
+    selected = bool(reminder and reminder["enabled"])
 
-    for index in range(0, len(REMINDER_CHOICES), 2):
-        chunk = REMINDER_CHOICES[index:index + 2]
-        rows.append([
-            InlineKeyboardButton(
-                text=f"{'✅' if time == selected else '➕'} {time}",
-                callback_data=f"habit_reminder_time_{habit_id}_{time.replace(':', '')}",
-            )
-            for time in chunk
-        ])
-
-    rows.append([InlineKeyboardButton(text="➕ Своё время", callback_data=f"habit_reminder_custom_{habit_id}")])
+    rows.append([InlineKeyboardButton(text="⏰ Изменить время", callback_data=f"habit_reminder_custom_{habit_id}")])
     if selected:
         rows.append([InlineKeyboardButton(text="🔕 Отключить", callback_data=f"habit_reminder_off_{habit_id}")])
     rows.append([InlineKeyboardButton(text="🔵 Назад", callback_data=f"habit_diary_{habit_id}")])
@@ -707,27 +710,14 @@ async def process_miss_diary_callback(callback: types.CallbackQuery):
     await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"]))
 
 
-@router.callback_query(F.data.startswith("habit_reminder_time_"))
-async def set_habit_reminder_time_callback(callback: types.CallbackQuery):
-    parts = callback.data.split("_")
-    habit_id = int(parts[-2])
-    raw_time = parts[-1]
-    reminder_time = f"{raw_time[:2]}:{raw_time[2:]}"
-    saved = await set_habit_reminder(callback.from_user.id, habit_id, reminder_time, enabled=True)
-
-    if not saved:
-        await callback.answer("Привычка не найдена", show_alert=True)
-        return
-
-    await show_habit_reminder(callback, habit_id)
-
-
 @router.callback_query(F.data.startswith("habit_reminder_custom_"))
 async def custom_habit_reminder_time(callback: types.CallbackQuery, state: FSMContext):
     habit_id = int(callback.data.split("_")[-1])
     await state.update_data(habit_reminder_id=habit_id)
     await callback.message.answer(
-        "Напиши время для этой привычки в формате <b>07:30</b>.",
+        "Напиши время или несколько времён через пробел:\n\n"
+        "<b>07:30</b>\n"
+        "<b>09:00 12:00 15:00 18:00</b>",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove(),
     )
@@ -759,23 +749,26 @@ async def show_habit_reminder(callback: types.CallbackQuery, habit_id: int):
     reminder = await get_habit_reminder(callback.from_user.id, habit_id)
     enabled = bool(reminder and reminder["enabled"])
     status = "🟢 включено" if enabled else "⚪ выключено"
-    reminder_time = reminder["reminder_time"] if enabled else "не выбрано"
+    reminder_times = ", ".join(parse_reminder_times(reminder["reminder_time"])) if enabled else "не выбрано"
     text = (
         "⏰ <b>Напоминание о привычке</b>\n\n"
         f"📖 <b>{habit_name(habit)}</b>\n"
         f"Статус: <b>{status}</b>\n"
-        f"Время: <b>{reminder_time}</b>\n\n"
-        "Выбери время. Оно будет работать только для этой привычки."
+        f"Время: <b>{reminder_times}</b>\n\n"
+        "Можно поставить одно время или несколько, например для воды."
     )
     await answer_or_edit(callback, text, habit_reminder_keyboard(habit_id, reminder))
 
 
 @router.message(Form.waiting_habit_reminder_time)
 async def save_custom_habit_reminder_time(message: types.Message, state: FSMContext):
-    reminder_time = normalize_reminder_time(message.text)
+    reminder_times = normalize_reminder_times(message.text)
 
-    if not reminder_time:
-        await message.answer("Не понял время. Напиши так: <b>07:30</b> или <b>21:05</b>.", parse_mode="HTML")
+    if not reminder_times:
+        await message.answer(
+            "Не понял время. Напиши так: <b>07:30</b> или <b>09:00 12:00 18:00</b>.",
+            parse_mode="HTML",
+        )
         return
 
     data = await state.get_data()
@@ -786,7 +779,8 @@ async def save_custom_habit_reminder_time(message: types.Message, state: FSMCont
         await state.clear()
         return
 
-    saved = await set_habit_reminder(message.from_user.id, habit_id, reminder_time, enabled=True)
+    reminder_value = ",".join(reminder_times)
+    saved = await set_habit_reminder(message.from_user.id, habit_id, reminder_value, enabled=True)
     await state.clear()
 
     if not saved:
@@ -794,7 +788,7 @@ async def save_custom_habit_reminder_time(message: types.Message, state: FSMCont
         return
 
     await message.answer(
-        f"Готово. Напоминание для привычки: <b>{reminder_time}</b>",
+        f"Готово. Напоминание для привычки: <b>{', '.join(reminder_times)}</b>",
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )

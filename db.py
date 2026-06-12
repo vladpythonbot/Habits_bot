@@ -438,13 +438,19 @@ async def get_habit_reminder(user_id: int, habit_id: int):
 async def get_due_habit_reminders(reminder_time: str):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT h.user_id, h.id, h.habit_name, h.last_completed_date
+            SELECT h.user_id, h.id, h.habit_name, h.last_completed_date, r.reminder_time
             FROM habit_reminders AS r
             JOIN habits AS h
                 ON h.user_id = r.user_id AND h.id = r.habit_id
-            WHERE r.enabled = 1 AND r.reminder_time = ?
-        """, (reminder_time,))
-        return await cursor.fetchall()
+            WHERE r.enabled = 1
+        """)
+        rows = await cursor.fetchall()
+
+    return [
+        (user_id, habit_id, habit_name, last_completed_date)
+        for user_id, habit_id, habit_name, last_completed_date, times in rows
+        if reminder_time in parse_reminder_times(times)
+    ]
 
 
 def parse_reminder_times(value: str | None) -> list[str]:
