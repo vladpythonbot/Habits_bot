@@ -41,6 +41,14 @@ from db import (
 router = Router()
 logger = logging.getLogger(__name__)
 
+REMINDER_PRESETS = {
+    "morning": ("Утро", ["08:00"]),
+    "day": ("День", ["13:00"]),
+    "evening": ("Вечер", ["20:00"]),
+    "water": ("Вода", ["09:00", "12:00", "15:00", "18:00"]),
+}
+
+
 class Form(StatesGroup):
     waiting_habit_name = State()
     waiting_new_name = State()
@@ -89,6 +97,17 @@ def normalize_reminder_time(value: str) -> str | None:
 
 
 def normalize_reminder_times(value: str) -> list[str]:
+    preset_aliases = {
+        "утро": REMINDER_PRESETS["morning"][1],
+        "день": REMINDER_PRESETS["day"][1],
+        "вечер": REMINDER_PRESETS["evening"][1],
+        "вода": REMINDER_PRESETS["water"][1],
+        "часто": REMINDER_PRESETS["water"][1],
+    }
+    preset = preset_aliases.get(value.strip().lower())
+    if preset:
+        return preset
+
     raw_items = value.replace(",", " ").replace(";", " ").split()
     times = []
 
@@ -228,6 +247,7 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
     weeks = [" ".join(calendar[index:index + 7]) for index in range(0, len(calendar), 7)]
     today_done = habit[5] == today_str()
     today_missed = await is_habit_missed(user_id, habit_id)
+    reminder = await get_habit_reminder(user_id, habit_id)
 
     return {
         "habit": habit,
@@ -241,15 +261,23 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
         "calendar": "\n".join(weeks) if weeks else "Пока нет дней для анализа.",
         "today_done": today_done,
         "today_missed": today_missed,
+        "reminder": reminder,
     }
 
 
 def format_habit_diary_text(item: dict) -> str:
     habit = item["habit"]
     today_status = "выполнено" if item["today_done"] else ("не сегодня" if item["today_missed"] else "не отмечено")
+    reminder = item["reminder"]
+    reminder_text = (
+        ", ".join(parse_reminder_times(reminder["reminder_time"]))
+        if reminder and reminder["enabled"]
+        else "нет"
+    )
     return (
         f"📖 <b>{habit_name(habit)}</b>\n\n"
         f"Сегодня: <b>{today_status}</b>\n"
+        f"Напоминание: <b>{reminder_text}</b>\n"
         f"30 дней: <b>{item['done']}/{item['possible']} · {item['rate']}%</b>\n"
         f"7 дней: <b>{item['current_done']}/{item['current_possible']} · {item['current_rate']}%</b>\n\n"
         f"🗓 <b>Календарь</b>\n{item['calendar']}\n\n"
@@ -333,7 +361,14 @@ def habit_actions_keyboard(habits) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool) -> InlineKeyboardMarkup:
+def reminder_button_text(reminder: dict | None) -> str:
+    if reminder and reminder["enabled"]:
+        times = parse_reminder_times(reminder["reminder_time"])
+        return f"⏰ {', '.join(times[:2])}" + ("…" if len(times) > 2 else "")
+    return "⏰ Напомнить"
+
+
+def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool, reminder: dict | None = None) -> InlineKeyboardMarkup:
     rows = []
     if not done_today and not missed_today:
         rows.append([
@@ -343,7 +378,7 @@ def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool) ->
     elif missed_today:
         rows.append([InlineKeyboardButton(text="✅ Всё-таки выполнил", callback_data=f"mark_diary_{habit_id}")])
     rows.extend([
-        [InlineKeyboardButton(text="⏰ Напоминание", callback_data=f"habit_reminder_{habit_id}")],
+        [InlineKeyboardButton(text=reminder_button_text(reminder), callback_data=f"habit_reminder_custom_{habit_id}")],
         [
             InlineKeyboardButton(text="✏️ Название", callback_data=f"edit_{habit_id}"),
             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_ask_{habit_id}"),
@@ -359,6 +394,23 @@ def habit_reminder_keyboard(habit_id: int, reminder: dict | None) -> InlineKeybo
 
     rows.append([InlineKeyboardButton(text="⏰ Изменить время", callback_data=f"habit_reminder_custom_{habit_id}")])
     if selected:
+        rows.append([InlineKeyboardButton(text="🔕 Отключить", callback_data=f"habit_reminder_off_{habit_id}")])
+    rows.append([InlineKeyboardButton(text="🔵 Назад", callback_data=f"habit_diary_{habit_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def quick_reminder_keyboard(habit_id: int, has_reminder: bool) -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="🌅 Утро", callback_data=f"habit_reminder_preset_{habit_id}_morning"),
+            InlineKeyboardButton(text="☀️ День", callback_data=f"habit_reminder_preset_{habit_id}_day"),
+        ],
+        [
+            InlineKeyboardButton(text="🌙 Вечер", callback_data=f"habit_reminder_preset_{habit_id}_evening"),
+            InlineKeyboardButton(text="💧 Вода", callback_data=f"habit_reminder_preset_{habit_id}_water"),
+        ],
+    ]
+    if has_reminder:
         rows.append([InlineKeyboardButton(text="🔕 Отключить", callback_data=f"habit_reminder_off_{habit_id}")])
     rows.append([InlineKeyboardButton(text="🔵 Назад", callback_data=f"habit_diary_{habit_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -415,7 +467,8 @@ async def open_stats(callback: types.CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("habit_diary_"))
-async def show_habit_diary(callback: types.CallbackQuery):
+async def show_habit_diary(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     habit_id = int(callback.data.split("_")[-1])
     item = await habit_diary(callback.from_user.id, habit_id, days=30)
 
@@ -423,7 +476,11 @@ async def show_habit_diary(callback: types.CallbackQuery):
         await callback.answer("Привычка не найдена", show_alert=True)
         return
 
-    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"]))
+    await answer_or_edit(
+        callback,
+        format_habit_diary_text(item),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+    )
 
 
 @router.callback_query(F.data.startswith("mark_diary_"))
@@ -441,7 +498,11 @@ async def process_mark_diary_callback(callback: types.CallbackQuery):
         await show_habits(callback, callback.from_user.id)
         return
 
-    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"]))
+    await answer_or_edit(
+        callback,
+        format_habit_diary_text(item),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+    )
 
 
 @router.callback_query(F.data.startswith("miss_diary_"))
@@ -455,29 +516,77 @@ async def process_miss_diary_callback(callback: types.CallbackQuery):
         await show_habits(callback, callback.from_user.id)
         return
 
-    await answer_or_edit(callback, format_habit_diary_text(item), habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"]))
+    await answer_or_edit(
+        callback,
+        format_habit_diary_text(item),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+    )
+
+
+@router.callback_query(F.data.startswith("habit_reminder_preset_"))
+async def set_habit_reminder_preset(callback: types.CallbackQuery, state: FSMContext):
+    parts = callback.data.split("_")
+    habit_id = int(parts[-2])
+    preset_key = parts[-1]
+    preset = REMINDER_PRESETS.get(preset_key)
+
+    if not preset:
+        await callback.answer("Вариант не найден", show_alert=True)
+        return
+
+    _, times = preset
+    saved = await set_habit_reminder(callback.from_user.id, habit_id, ",".join(times), enabled=True)
+    await state.clear()
+
+    if not saved:
+        await callback.answer("Привычка не найдена", show_alert=True)
+        return
+
+    item = await habit_diary(callback.from_user.id, habit_id, days=30)
+    if not item:
+        await show_habits(callback, callback.from_user.id)
+        return
+
+    await answer_or_edit(
+        callback,
+        format_habit_diary_text(item),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+    )
 
 
 @router.callback_query(F.data.startswith("habit_reminder_custom_"))
 async def custom_habit_reminder_time(callback: types.CallbackQuery, state: FSMContext):
     habit_id = int(callback.data.split("_")[-1])
+    reminder = await get_habit_reminder(callback.from_user.id, habit_id)
     await state.update_data(habit_reminder_id=habit_id)
     await callback.message.answer(
-        "Напиши время или несколько времён через пробел:\n\n"
+        "Выбери готовый вариант или напиши время:\n\n"
         "<b>07:30</b>\n"
-        "<b>09:00 12:00 15:00 18:00</b>",
+        "<b>09:00 12:00 15:00 18:00</b>\n\n"
+        "Можно написать: <b>утро</b>, <b>день</b>, <b>вечер</b> или <b>вода</b>.",
         parse_mode="HTML",
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=quick_reminder_keyboard(habit_id, bool(reminder and reminder["enabled"])),
     )
     await state.set_state(Form.waiting_habit_reminder_time)
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("habit_reminder_off_"))
-async def disable_habit_reminder_callback(callback: types.CallbackQuery):
+async def disable_habit_reminder_callback(callback: types.CallbackQuery, state: FSMContext):
     habit_id = int(callback.data.split("_")[-1])
     await disable_habit_reminder(callback.from_user.id, habit_id)
-    await show_habit_reminder(callback, habit_id)
+    await state.clear()
+
+    item = await habit_diary(callback.from_user.id, habit_id, days=30)
+    if not item:
+        await show_habits(callback, callback.from_user.id)
+        return
+
+    await answer_or_edit(
+        callback,
+        format_habit_diary_text(item),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+    )
 
 
 @router.callback_query(F.data.startswith("habit_reminder_"))
@@ -535,10 +644,19 @@ async def save_custom_habit_reminder_time(message: types.Message, state: FSMCont
         await message.answer("Привычка не найдена.", reply_markup=main_keyboard)
         return
 
+    item = await habit_diary(message.from_user.id, habit_id, days=30)
+    if not item:
+        await message.answer(
+            f"Готово. Напоминание: <b>{', '.join(reminder_times)}</b>",
+            parse_mode="HTML",
+            reply_markup=main_keyboard,
+        )
+        return
+
     await message.answer(
-        f"Готово. Напоминание для привычки: <b>{', '.join(reminder_times)}</b>",
+        format_habit_diary_text(item),
         parse_mode="HTML",
-        reply_markup=main_keyboard,
+        reply_markup=habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
     )
 
 
