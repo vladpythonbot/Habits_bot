@@ -114,6 +114,56 @@ def single_habit_completion(completed_dates: set[str], available_dates: list[str
     return done, possible, rate
 
 
+def completion_for_dates(stats: dict, dates: list[str]) -> tuple[int, int, int]:
+    possible = 0
+    done = 0
+
+    for habit in stats["habits"]:
+        created = parse_date(habit[2])
+        habit_dates = [date for date in dates if parse_date(date) >= created]
+        possible += len(habit_dates)
+
+    for date in dates:
+        done += stats["daily_done"].get(date, 0)
+
+    rate = round(done / possible * 100) if possible else 0
+    return done, possible, rate
+
+
+def week_comparison(stats: dict) -> dict:
+    dates = completed_analysis_dates(stats["dates"])
+    current_dates = dates[-7:]
+    previous_dates = dates[-14:-7]
+    current_done, current_possible, current_rate = completion_for_dates(stats, current_dates)
+    previous_done, previous_possible, previous_rate = completion_for_dates(stats, previous_dates)
+    diff = current_rate - previous_rate
+
+    if previous_possible == 0:
+        note = "Прошлой недели ещё нет для сравнения."
+    elif diff >= 10:
+        note = "Неделя стала заметно сильнее."
+    elif diff > 0:
+        note = "Есть лёгкий рост."
+    elif diff <= -10:
+        note = "На этой неделе стало тяжелее."
+    elif diff < 0:
+        note = "Небольшой спад, без драмы."
+    else:
+        note = "Темп держится ровно."
+
+    return {
+        "current_done": current_done,
+        "current_possible": current_possible,
+        "current_rate": current_rate,
+        "previous_done": previous_done,
+        "previous_possible": previous_possible,
+        "previous_rate": previous_rate,
+        "diff": diff,
+        "has_previous": previous_possible > 0,
+        "note": note,
+    }
+
+
 async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
     habits = await get_user_habits(user_id)
     logs = await get_habit_logs(user_id, days=days)
@@ -207,13 +257,23 @@ def format_habit_diary_text(item: dict) -> str:
     )
 
 
-def compact_stats_text(stats: dict, breakdown: list[dict]) -> str:
+def compact_stats_text(stats: dict, breakdown: list[dict], comparison: dict) -> str:
+    previous_text = (
+        f"{comparison['previous_done']}/{comparison['previous_possible']} · {comparison['previous_rate']}%"
+        if comparison["has_previous"]
+        else "нет данных"
+    )
+    diff_text = f"{comparison['diff']:+d}%" if comparison["has_previous"] else "пока нет"
     lines = [
         "🔵 <b>Статистика</b>",
         "За 30 дней, без сегодняшнего дня.",
         "",
         f"Сегодня: <b>{stats['today_done']}/{stats['habits_count']}</b>",
         f"30 дней: <b>{stats['period_completed']}/{stats['possible']} · {stats['completion_rate']}%</b>",
+        f"Эта неделя: <b>{comparison['current_done']}/{comparison['current_possible']} · {comparison['current_rate']}%</b>",
+        f"Прошлая: <b>{previous_text}</b>",
+        f"Разница: <b>{diff_text}</b>",
+        f"Вывод: {comparison['note']}",
         "",
         "🟣 <b>Привычки</b>",
     ]
@@ -345,7 +405,8 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         return
 
     breakdown = await habit_breakdown(user_id, days=30)
-    await answer_or_edit(obj, compact_stats_text(stats, breakdown), stats_keyboard())
+    comparison = week_comparison(stats)
+    await answer_or_edit(obj, compact_stats_text(stats, breakdown, comparison), stats_keyboard())
 
 
 @router.callback_query(F.data == "open_stats")
