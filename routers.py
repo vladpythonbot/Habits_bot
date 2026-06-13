@@ -45,7 +45,7 @@ REMINDER_PRESETS = {
     "morning": ("Утро", ["08:00"]),
     "day": ("День", ["13:00"]),
     "evening": ("Вечер", ["20:00"]),
-    "water": ("Вода", ["09:00", "12:00", "15:00", "18:00"]),
+    "often": ("Часто", ["08:00", "11:00", "14:00", "17:00", "20:00"]),
 }
 
 
@@ -101,8 +101,8 @@ def normalize_reminder_times(value: str) -> list[str]:
         "утро": REMINDER_PRESETS["morning"][1],
         "день": REMINDER_PRESETS["day"][1],
         "вечер": REMINDER_PRESETS["evening"][1],
-        "вода": REMINDER_PRESETS["water"][1],
-        "часто": REMINDER_PRESETS["water"][1],
+        "часто": REMINDER_PRESETS["often"][1],
+        "несколько": REMINDER_PRESETS["often"][1],
     }
     preset = preset_aliases.get(value.strip().lower())
     if preset:
@@ -407,7 +407,7 @@ def quick_reminder_keyboard(habit_id: int, has_reminder: bool) -> InlineKeyboard
         ],
         [
             InlineKeyboardButton(text="🌙 Вечер", callback_data=f"habit_reminder_preset_{habit_id}_evening"),
-            InlineKeyboardButton(text="💧 Вода", callback_data=f"habit_reminder_preset_{habit_id}_water"),
+            InlineKeyboardButton(text="🔁 Часто", callback_data=f"habit_reminder_preset_{habit_id}_often"),
         ],
     ]
     if has_reminder:
@@ -563,7 +563,7 @@ async def custom_habit_reminder_time(callback: types.CallbackQuery, state: FSMCo
         "Выбери готовый вариант или напиши время:\n\n"
         "<b>07:30</b>\n"
         "<b>09:00 12:00 15:00 18:00</b>\n\n"
-        "Можно написать: <b>утро</b>, <b>день</b>, <b>вечер</b> или <b>вода</b>.",
+        "Можно написать: <b>утро</b>, <b>день</b>, <b>вечер</b> или <b>часто</b>.",
         parse_mode="HTML",
         reply_markup=quick_reminder_keyboard(habit_id, bool(reminder and reminder["enabled"])),
     )
