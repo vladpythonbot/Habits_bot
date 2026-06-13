@@ -69,14 +69,6 @@ async def init_db():
         """)
 
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS reminder_settings (
-                user_id INTEGER PRIMARY KEY,
-                enabled BOOLEAN DEFAULT 0,
-                reminder_time TEXT DEFAULT "15:00"
-            )
-        """)
-
-        await db.execute("""
             CREATE TABLE IF NOT EXISTS habit_reminders (
                 user_id INTEGER NOT NULL,
                 habit_id INTEGER NOT NULL,
@@ -346,49 +338,6 @@ async def get_all_users_with_habits():
         return [row[0] for row in rows]
 
 
-async def set_reminder_settings(user_id: int, enabled: bool, reminder_time: str = "15:00"):
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("""
-            INSERT INTO reminder_settings (user_id, enabled, reminder_time)
-            VALUES (?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                enabled = excluded.enabled,
-                reminder_time = excluded.reminder_time
-        """, (user_id, enabled, reminder_time))
-        await db.commit()
-
-
-async def get_reminder_settings(user_id: int):
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT enabled, reminder_time
-            FROM reminder_settings
-            WHERE user_id = ?
-        """, (user_id,))
-        row = await cursor.fetchone()
-        if row:
-            return {"enabled": bool(row[0]), "reminder_time": row[1] or "15:00"}
-
-        await set_reminder_settings(user_id, True, reminder_time="15:00")
-        return {"enabled": True, "reminder_time": "15:00"}
-
-
-async def get_users_by_reminder_time(reminder_time: str):
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT user_id, reminder_time
-            FROM reminder_settings
-            WHERE enabled = 1
-        """)
-        rows = await cursor.fetchall()
-
-    return [
-        user_id
-        for user_id, times in rows
-        if reminder_time in parse_reminder_times(times)
-    ]
-
-
 async def set_habit_reminder(user_id: int, habit_id: int, reminder_time: str, enabled: bool = True) -> bool:
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
@@ -464,7 +413,3 @@ def parse_reminder_times(value: str | None) -> list[str]:
             times.append(item)
 
     return sorted(set(times)) or ["15:00"]
-
-
-async def init_reminder_table():
-    await init_db()
