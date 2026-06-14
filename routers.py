@@ -202,7 +202,7 @@ async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
         possible = len(available_dates)
         missed = max(possible - done, 0)
         rate = round(done / possible * 100) if possible else 0
-        heatmap = "".join("🟩" if date in completed_dates else "⬜" for date in available_dates[-14:])
+        heatmap = "".join("■" if date in completed_dates else "·" for date in available_dates[-14:])
 
         result.append({
             "habit": habit,
@@ -210,7 +210,7 @@ async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
             "possible": possible,
             "missed": missed,
             "rate": rate,
-            "heatmap": heatmap or "⬜",
+            "heatmap": heatmap or "·",
         })
 
     return result
@@ -240,7 +240,7 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
 
     calendar = []
     for date in available_dates[-30:]:
-        mark = "🟩" if date in completed_dates else "⬜"
+        mark = "■" if date in completed_dates else "·"
         day = datetime.strptime(date, "%Y-%m-%d").strftime("%d")
         calendar.append(f"{mark}{day}")
 
@@ -280,7 +280,7 @@ def format_habit_diary_text(item: dict) -> str:
         f"Напоминание: <b>{reminder_text}</b>\n"
         f"30 дней: <b>{item['done']}/{item['possible']} · {item['rate']}%</b>\n"
         f"7 дней: <b>{item['current_done']}/{item['current_possible']} · {item['current_rate']}%</b>\n\n"
-        f"🗓 <b>Календарь</b>\n{item['calendar']}\n\n"
+        f"🗓 <b>Календарь</b>\n<code>{item['calendar']}</code>\n\n"
         "Сегодня не входит в проценты до конца дня."
     )
 
@@ -314,7 +314,7 @@ def compact_stats_text(stats: dict, breakdown: list[dict], comparison: dict) -> 
         lines.append(
             f"• <b>{habit_name(item['habit'])}</b> — {item['done']}/{item['possible']} · {item['rate']}%"
         )
-        lines.append(item["heatmap"][-14:])
+        lines.append(f"<code>{item['heatmap'][-14:]}</code>")
 
     return "\n".join(lines)
 
