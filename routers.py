@@ -157,14 +157,16 @@ def week_comparison(stats: dict) -> dict:
     previous_done, previous_possible, previous_rate = completion_for_dates(stats, previous_dates)
     diff = current_rate - previous_rate
 
-    if previous_possible == 0:
-        note = "Прошлой недели ещё нет для сравнения."
+    if current_possible == 0:
+        note = "Пока нет завершённых дней для анализа."
+    elif previous_possible == 0:
+        note = "Предыдущего отрезка ещё нет для сравнения."
     elif diff >= 10:
-        note = "Неделя стала заметно сильнее."
+        note = "Последние дни стали заметно сильнее."
     elif diff > 0:
         note = "Есть лёгкий рост."
     elif diff <= -10:
-        note = "На этой неделе стало тяжелее."
+        note = "В последние дни стало тяжелее."
     elif diff < 0:
         note = "Небольшой спад, без драмы."
     else:
@@ -178,6 +180,7 @@ def week_comparison(stats: dict) -> dict:
         "previous_possible": previous_possible,
         "previous_rate": previous_rate,
         "diff": diff,
+        "has_current": current_possible > 0,
         "has_previous": previous_possible > 0,
         "note": note,
     }
@@ -198,11 +201,12 @@ async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
         created = parse_date(habit[2])
         available_dates = [date for date in dates if parse_date(date) >= created]
         completed_dates = completed_by_habit.get(habit_id, set())
-        done = sum(1 for date in available_dates if date in completed_dates)
-        possible = len(available_dates)
+        visible_dates = available_dates[-14:]
+        done = sum(1 for date in visible_dates if date in completed_dates)
+        possible = len(visible_dates)
         missed = max(possible - done, 0)
         rate = round(done / possible * 100) if possible else 0
-        heatmap = "".join("■" if date in completed_dates else "·" for date in available_dates[-14:])
+        heatmap = "".join("🟢" if date in completed_dates else "⚪" for date in visible_dates)
 
         result.append({
             "habit": habit,
@@ -210,7 +214,7 @@ async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
             "possible": possible,
             "missed": missed,
             "rate": rate,
-            "heatmap": heatmap or "·",
+            "heatmap": heatmap or "⚪",
         })
 
     return result
@@ -240,7 +244,7 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
 
     calendar = []
     for date in available_dates[-30:]:
-        mark = "■" if date in completed_dates else "·"
+        mark = "🟢" if date in completed_dates else "⚪"
         day = datetime.strptime(date, "%Y-%m-%d").strftime("%d")
         calendar.append(f"{mark}{day}")
 
@@ -286,24 +290,29 @@ def format_habit_diary_text(item: dict) -> str:
 
 
 def compact_stats_text(stats: dict, breakdown: list[dict], comparison: dict) -> str:
+    current_text = (
+        f"{comparison['current_done']}/{comparison['current_possible']} · {comparison['current_rate']}%"
+        if comparison["has_current"]
+        else "нет данных"
+    )
     previous_text = (
         f"{comparison['previous_done']}/{comparison['previous_possible']} · {comparison['previous_rate']}%"
         if comparison["has_previous"]
         else "нет данных"
     )
-    diff_text = f"{comparison['diff']:+d}%" if comparison["has_previous"] else "пока нет"
+    diff_text = f"{comparison['diff']:+d}%" if comparison["has_current"] and comparison["has_previous"] else "пока нет"
     lines = [
         "🔵 <b>Статистика</b>",
-        "За 30 дней, без сегодняшнего дня.",
+        "За 30 дней, сегодня не входит в проценты.",
         "",
         f"Сегодня: <b>{stats['today_done']}/{stats['habits_count']}</b>",
         f"30 дней: <b>{stats['period_completed']}/{stats['possible']} · {stats['completion_rate']}%</b>",
-        f"Эта неделя: <b>{comparison['current_done']}/{comparison['current_possible']} · {comparison['current_rate']}%</b>",
-        f"Прошлая: <b>{previous_text}</b>",
+        f"Последние 7 дней: <b>{current_text}</b>",
+        f"7 дней до этого: <b>{previous_text}</b>",
         f"Разница: <b>{diff_text}</b>",
         f"Вывод: {comparison['note']}",
         "",
-        "🟣 <b>Привычки</b>",
+        "🟣 <b>Привычки за 14 дней</b>",
     ]
 
     if not breakdown:
@@ -456,7 +465,7 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         )
         return
 
-    breakdown = await habit_breakdown(user_id, days=30)
+    breakdown = await habit_breakdown(user_id, days=14)
     comparison = week_comparison(stats)
     await answer_or_edit(obj, compact_stats_text(stats, breakdown, comparison), stats_keyboard())
 
