@@ -1,5 +1,7 @@
 # routers.py
 import logging
+import struct
+import zlib
 from datetime import datetime
 from html import escape
 from zoneinfo import ZoneInfo
@@ -9,6 +11,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
+    BufferedInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
@@ -323,9 +326,81 @@ def compact_stats_text(stats: dict, breakdown: list[dict], comparison: dict) -> 
         lines.append(
             f"• <b>{habit_name(item['habit'])}</b> — {item['done']}/{item['possible']} · {item['rate']}%"
         )
-        lines.append(f"<code>{item['heatmap'][-14:]}</code>")
 
     return "\n".join(lines)
+
+
+def png_chunk(kind: bytes, data: bytes) -> bytes:
+    checksum = zlib.crc32(kind + data) & 0xFFFFFFFF
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", checksum)
+
+
+def build_habit_chart_png(breakdown: list[dict]) -> bytes | None:
+    if not breakdown:
+        return None
+
+    cols = max((len(item["heatmap"]) for item in breakdown), default=14)
+    rows = len(breakdown)
+    cell = 24
+    margin = 14
+    radius = 8
+    width = margin * 2 + cols * cell
+    height = margin * 2 + rows * cell
+    background = (248, 250, 252)
+    done_color = (34, 197, 94)
+    empty_color = (241, 245, 249)
+    border_color = (203, 213, 225)
+
+    pixels = bytearray(background * (width * height))
+
+    def set_pixel(x: int, y: int, color: tuple[int, int, int]) -> None:
+        if 0 <= x < width and 0 <= y < height:
+            index = (y * width + x) * 3
+            pixels[index:index + 3] = bytes(color)
+
+    def draw_circle(cx: int, cy: int, color: tuple[int, int, int]) -> None:
+        border_radius = radius + 1
+        for y in range(cy - border_radius, cy + border_radius + 1):
+            for x in range(cx - border_radius, cx + border_radius + 1):
+                distance = (x - cx) ** 2 + (y - cy) ** 2
+                if distance <= border_radius ** 2:
+                    set_pixel(x, y, border_color)
+                if distance <= radius ** 2:
+                    set_pixel(x, y, color)
+
+    for row_index, item in enumerate(breakdown):
+        y = margin + row_index * cell + cell // 2
+        for col_index, mark in enumerate(item["heatmap"]):
+            x = margin + col_index * cell + cell // 2
+            draw_circle(x, y, done_color if mark == "🟢" else empty_color)
+
+    raw_rows = []
+    row_bytes = width * 3
+    for y in range(height):
+        start = y * row_bytes
+        raw_rows.append(b"\x00" + bytes(pixels[start:start + row_bytes]))
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + png_chunk(b"IHDR", header)
+        + png_chunk(b"IDAT", zlib.compress(b"".join(raw_rows), level=9))
+        + png_chunk(b"IEND", b"")
+    )
+
+
+async def send_stats(obj: types.Message | types.CallbackQuery, text: str, breakdown: list[dict]):
+    chart = build_habit_chart_png(breakdown)
+    if not chart:
+        await answer_or_edit(obj, text, stats_keyboard())
+        return
+
+    photo = BufferedInputFile(chart, filename="habit_stats.png")
+    if isinstance(obj, types.CallbackQuery):
+        await obj.message.answer_photo(photo, caption=text, parse_mode="HTML", reply_markup=stats_keyboard())
+        await obj.answer()
+    else:
+        await obj.answer_photo(photo, caption=text, parse_mode="HTML", reply_markup=stats_keyboard())
 
 
 async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
@@ -467,7 +542,7 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
 
     breakdown = await habit_breakdown(user_id, days=14)
     comparison = week_comparison(stats)
-    await answer_or_edit(obj, compact_stats_text(stats, breakdown, comparison), stats_keyboard())
+    await send_stats(obj, compact_stats_text(stats, breakdown, comparison), breakdown)
 
 
 @router.callback_query(F.data == "open_stats")
