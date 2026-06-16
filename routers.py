@@ -201,7 +201,7 @@ async def habit_breakdown(user_id: int, days: int = 14) -> list[dict]:
         created = parse_date(habit[2])
         available_dates = [date for date in dates if parse_date(date) >= created]
         completed_dates = completed_by_habit.get(habit_id, set())
-        visible_dates = available_dates[-14:]
+        visible_dates = available_dates[-7:]
         done = sum(1 for date in visible_dates if date in completed_dates)
         possible = len(visible_dates)
         missed = max(possible - done, 0)
@@ -312,7 +312,7 @@ def compact_stats_text(stats: dict, breakdown: list[dict], comparison: dict) -> 
         f"Разница: <b>{diff_text}</b>",
         f"Вывод: {comparison['note']}",
         "",
-        "🟣 <b>Привычки за 14 дней</b>",
+        "🟣 <b>Привычки за 7 дней</b>",
     ]
 
     if not breakdown:
@@ -470,7 +470,7 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         )
         return
 
-    breakdown = await habit_breakdown(user_id, days=14)
+    breakdown = await habit_breakdown(user_id, days=7)
     comparison = week_comparison(stats)
     await answer_or_edit(obj, compact_stats_text(stats, breakdown, comparison), stats_keyboard())
 
