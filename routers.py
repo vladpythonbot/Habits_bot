@@ -470,7 +470,7 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
         )
         return
 
-    breakdown = await habit_breakdown(user_id, days=7)
+    breakdown = await habit_breakdown(user_id, days=8)
     comparison = week_comparison(stats)
     await answer_or_edit(obj, compact_stats_text(stats, breakdown, comparison), stats_keyboard())
 
