@@ -156,6 +156,58 @@ async def mark_habit_completed(user_id: int, habit_id: int):
     }
 
 
+async def unmark_habit_completed(user_id: int, habit_id: int):
+    today = today_str()
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT habit_name
+            FROM habits
+            WHERE id = ? AND user_id = ?
+        """, (habit_id, user_id))
+        row = await cursor.fetchone()
+        if not row:
+            return False, None
+
+        habit_name = row[0]
+        cursor = await db.execute("""
+            DELETE FROM habit_logs
+            WHERE user_id = ? AND habit_id = ? AND completed_date = ?
+        """, (user_id, habit_id, today))
+        if cursor.rowcount == 0:
+            return False, None
+
+        cursor = await db.execute("""
+            SELECT completed_date
+            FROM habit_logs
+            WHERE user_id = ? AND habit_id = ?
+            ORDER BY completed_date DESC
+        """, (user_id, habit_id))
+        completed_dates = [item[0] for item in await cursor.fetchall()]
+
+        last_completed_date = completed_dates[0] if completed_dates else None
+        streak = 0
+        if completed_dates:
+            expected = parse_date(completed_dates[0])
+            for completed_date in completed_dates:
+                if parse_date(completed_date) != expected:
+                    break
+                streak += 1
+                expected -= timedelta(days=1)
+
+        await db.execute("""
+            UPDATE habits
+            SET last_completed_date = ?,
+                streak = ?,
+                total_completed = ?
+            WHERE id = ? AND user_id = ?
+        """, (last_completed_date, streak, len(completed_dates), habit_id, user_id))
+
+        await db.commit()
+
+    return True, {"habit_name": habit_name}
+
+
 async def update_habit_name(user_id: int, habit_id: int, new_name: str):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""

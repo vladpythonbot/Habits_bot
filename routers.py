@@ -35,6 +35,7 @@ from db import (
     save_habit,
     set_habit_reminder,
     today_str,
+    unmark_habit_completed,
     update_habit_name,
 )
 
@@ -384,7 +385,11 @@ def reminder_button_text(reminder: dict | None) -> str:
 
 def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool, reminder: dict | None = None) -> InlineKeyboardMarkup:
     rows = []
-    if not done_today and not missed_today:
+    if done_today:
+        rows.append([
+            InlineKeyboardButton(text="↩️ Отменить выполнение", callback_data=f"undo_diary_{habit_id}"),
+        ])
+    elif not missed_today:
         rows.append([
             InlineKeyboardButton(text="✅ Выполнил", callback_data=f"mark_diary_{habit_id}"),
             InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_diary_{habit_id}"),
@@ -507,6 +512,28 @@ async def process_mark_diary_callback(callback: types.CallbackQuery):
         return
 
     await callback.answer(f"Отмечено: {info['habit_name']}")
+    item = await habit_diary(callback.from_user.id, habit_id, days=30)
+    if not item:
+        await show_habits(callback, callback.from_user.id)
+        return
+
+    await answer_or_edit(
+        callback,
+        format_habit_diary_text(item),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+    )
+
+
+@router.callback_query(F.data.startswith("undo_diary_"))
+async def process_undo_diary_callback(callback: types.CallbackQuery):
+    habit_id = int(callback.data.split("_")[-1])
+    success, info = await unmark_habit_completed(callback.from_user.id, habit_id)
+
+    if not success:
+        await callback.answer("Сегодняшней отметки уже нет", show_alert=True)
+        return
+
+    await callback.answer(f"Отменено: {info['habit_name']}")
     item = await habit_diary(callback.from_user.id, habit_id, days=30)
     if not item:
         await show_habits(callback, callback.from_user.id)
@@ -693,6 +720,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     today = today_str()
     missed_today = await get_missed_habit_ids(user_id)
     unmarked = [h for h in habits if h[5] != today and h[0] not in missed_today]
+    completed = [h for h in habits if h[5] == today]
     rows = []
     text = await main_summary(user_id)
 
@@ -711,6 +739,17 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
                 InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_{habit_id}"),
             ])
 
+    if completed:
+        text += "\n\n<b>Выполнено:</b>"
+        for habit in completed:
+            text += f"\n• <b>{habit_name(habit)}</b>"
+            rows.append([
+                InlineKeyboardButton(
+                    text=f"↩️ Отменить: {habit[1][:18]}",
+                    callback_data=f"undo_{habit[0]}",
+                ),
+            ])
+
     rows.append([InlineKeyboardButton(text="➕ Добавить", callback_data="add_habit")])
     await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
@@ -725,6 +764,19 @@ async def process_mark_callback(callback: types.CallbackQuery):
         return
 
     await callback.answer(f"Отмечено: {info['habit_name']}")
+    await show_today(callback, callback.from_user.id)
+
+
+@router.callback_query(F.data.startswith("undo_"))
+async def process_undo_callback(callback: types.CallbackQuery):
+    habit_id = int(callback.data.split("_")[-1])
+    success, info = await unmark_habit_completed(callback.from_user.id, habit_id)
+
+    if not success:
+        await callback.answer("Сегодняшней отметки уже нет", show_alert=True)
+        return
+
+    await callback.answer(f"Отменено: {info['habit_name']}")
     await show_today(callback, callback.from_user.id)
 
 
