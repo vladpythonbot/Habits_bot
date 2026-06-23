@@ -400,6 +400,7 @@ async def save_habit_progress(
 async def get_habit_progress_summary(user_id: int, habit_id: int) -> dict | None:
     dates_30 = date_range(30)
     dates_7 = set(dates_30[-7:])
+    previous_dates_7 = set(dates_30[-14:-7])
     today = today_str()
 
     async with aiosqlite.connect(DB_NAME) as db:
@@ -421,12 +422,34 @@ async def get_habit_progress_summary(user_id: int, habit_id: int) -> dict | None
         rows = await cursor.fetchall()
 
     values = {progress_date: value for progress_date, value in rows}
+    seven_values = [value for date, value in values.items() if date in dates_7]
+    previous_seven_values = [value for date, value in values.items() if date in previous_dates_7]
+    thirty_values = list(values.values())
+    best_date = None
+    best_value = None
+    if values:
+        best_date, best_value = max(values.items(), key=lambda item: item[1])
+
+    seven_days = sum(seven_values)
+    previous_seven_days = sum(previous_seven_values)
+    change_percent = None
+    if previous_seven_days > 0:
+        change_percent = round((seven_days - previous_seven_days) / previous_seven_days * 100)
+
     return {
         "unit": habit[0],
         "today": values.get(today),
-        "seven_days": sum(value for date, value in values.items() if date in dates_7),
-        "thirty_days": sum(values.values()),
+        "seven_days": seven_days,
+        "previous_seven_days": previous_seven_days,
+        "thirty_days": sum(thirty_values),
         "days_recorded": len(values),
+        "days_recorded_7": len(seven_values),
+        "days_recorded_30": len(thirty_values),
+        "average_7": seven_days / len(seven_values) if seven_values else None,
+        "average_30": sum(thirty_values) / len(thirty_values) if thirty_values else None,
+        "best_value": best_value,
+        "best_date": best_date,
+        "change_percent": change_percent,
     }
 
 
