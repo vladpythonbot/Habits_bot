@@ -468,16 +468,25 @@ def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool, re
     elif missed_today:
         rows.append([InlineKeyboardButton(text="✅ Всё-таки выполнил", callback_data=f"mark_diary_{habit_id}")])
     rows.extend([
-        [InlineKeyboardButton(text="📏 Записать прогресс", callback_data=f"progress_open_{habit_id}")],
+        [
+            InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit_id}"),
+            InlineKeyboardButton(text="⚙️ Настройки", callback_data=f"habit_settings_{habit_id}"),
+        ],
+        [InlineKeyboardButton(text="🟣 Все привычки", callback_data="open_habits")],
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def habit_settings_keyboard(habit_id: int, reminder: dict | None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=reminder_button_text(reminder), callback_data=f"habit_reminder_custom_{habit_id}")],
         [InlineKeyboardButton(text="📁 Папка", callback_data=f"habit_group_{habit_id}")],
         [
             InlineKeyboardButton(text="✏️ Название", callback_data=f"edit_{habit_id}"),
             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_ask_{habit_id}"),
         ],
-        [InlineKeyboardButton(text="🟣 Все привычки", callback_data="open_habits")],
+        [InlineKeyboardButton(text="🔵 Назад", callback_data=f"habit_diary_{habit_id}")],
     ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def habit_reminder_keyboard(habit_id: int, reminder: dict | None) -> InlineKeyboardMarkup:
@@ -662,6 +671,31 @@ async def show_habit_diary(callback: types.CallbackQuery, state: FSMContext):
         callback,
         format_habit_diary_text(item),
         habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+    )
+
+
+@router.callback_query(F.data.startswith("habit_settings_"))
+async def show_habit_settings(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    habit_id = int(callback.data.split("_")[-1])
+    item = await habit_diary(callback.from_user.id, habit_id, days=30)
+    if not item:
+        await callback.answer("Привычка не найдена", show_alert=True)
+        return
+
+    folder = group_name(item["group"]) if item["group"] else "без папки"
+    reminder = item["reminder"]
+    reminder_text = (
+        ", ".join(parse_reminder_times(reminder["reminder_time"]))
+        if reminder and reminder["enabled"]
+        else "выключено"
+    )
+    await answer_or_edit(
+        callback,
+        f"⚙️ <b>{habit_name(item['habit'])}</b>\n\n"
+        f"Папка: <b>{folder}</b>\n"
+        f"Напоминание: <b>{reminder_text}</b>",
+        habit_settings_keyboard(habit_id, reminder),
     )
 
 
