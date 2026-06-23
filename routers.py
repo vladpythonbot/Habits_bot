@@ -49,7 +49,7 @@ from db import (
 
 router = Router()
 logger = logging.getLogger(__name__)
-APP_VERSION = "2026.06.23.1"
+APP_VERSION = "2026.06.23.2"
 
 REMINDER_PRESETS = {
     "morning": ("Утро", ["08:00"]),
@@ -61,7 +61,6 @@ REMINDER_PRESETS = {
 
 class Form(StatesGroup):
     waiting_habit_name = State()
-    waiting_habit_group = State()
     waiting_group_name = State()
     waiting_new_name = State()
     waiting_habit_reminder_time = State()
@@ -566,25 +565,9 @@ def habit_group_picker(habit_id: int, groups) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def new_habit_group_picker(groups) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="Без папки", callback_data="new_habit_to_none")]]
-    for group in groups:
-        rows.append([
-            InlineKeyboardButton(
-                text=f"📁 {group[1][:24]}",
-                callback_data=f"new_habit_to_{group[0]}",
-            ),
-        ])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 @router.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer(
-        await main_summary(message.from_user.id),
-        parse_mode="HTML",
-        reply_markup=main_keyboard,
-    )
+    await show_today(message, message.from_user.id)
 
 
 @router.message(Command("version"))
@@ -835,21 +818,7 @@ async def save_progress_message(message: types.Message, state: FSMContext):
 
     await mark_habit_completed(message.from_user.id, habit_id)
     await state.clear()
-    item = await habit_diary(message.from_user.id, habit_id, days=30)
-    if not item:
-        await message.answer("Прогресс сохранён.", reply_markup=main_keyboard)
-        return
-
-    await message.answer(
-        format_habit_diary_text(item),
-        parse_mode="HTML",
-        reply_markup=habit_diary_keyboard(
-            habit_id,
-            item["today_done"],
-            item["today_missed"],
-            item["reminder"],
-        ),
-    )
+    await show_today(message, message.from_user.id)
 
 
 @router.callback_query(F.data.startswith("habit_reminder_preset_"))
@@ -1026,8 +995,8 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
             folder = f"📁 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
             rows.append([
-                InlineKeyboardButton(text=f"✅ {habit[1][:20]}", callback_data=f"mark_{habit_id}"),
-                InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_{habit_id}"),
+                InlineKeyboardButton(text=f"✅ {habit[1][:18]}", callback_data=f"mark_{habit_id}"),
+                InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit_id}"),
             ])
 
     if completed:
@@ -1040,9 +1009,14 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
                     text=f"↩️ Отменить: {habit[1][:18]}",
                     callback_data=f"undo_{habit[0]}",
                 ),
+                InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit[0]}"),
             ])
 
     rows.append([InlineKeyboardButton(text="➕ Добавить", callback_data="add_habit")])
+    rows.append([
+        InlineKeyboardButton(text="🔵 Статистика", callback_data="open_stats"),
+        InlineKeyboardButton(text="🟣 Управление", callback_data="open_habits"),
+    ])
     await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 
@@ -1167,16 +1141,10 @@ async def new_group_name(message: types.Message, state: FSMContext):
         await message.answer("Папка с таким названием уже есть.", reply_markup=main_keyboard)
         return
 
-    await message.answer(
-        f"📁 Папка <b>{escape(name)}</b> создана.\n"
-        "Теперь добавь в неё привычки или перенеси существующие.",
-        parse_mode="HTML",
-        reply_markup=main_keyboard,
-    )
     if group_id:
         habits = await get_user_habits(message.from_user.id, group_id=group_id)
         await message.answer(
-            f"📁 <b>{escape(name)}</b>",
+            f"📁 <b>{escape(name)}</b>\n\nПапка создана. Добавь первую привычку.",
             parse_mode="HTML",
             reply_markup=group_keyboard(group_id, habits),
         )
@@ -1186,7 +1154,9 @@ async def new_group_name(message: types.Message, state: FSMContext):
 @router.callback_query(F.data.startswith("add_habit_group_"))
 async def new_habit_start(callback: types.CallbackQuery, state: FSMContext):
     group_id = int(callback.data.split("_")[-1]) if callback.data.startswith("add_habit_group_") else None
-    await state.update_data(new_habit_group=group_id)
+    await state.clear()
+    if group_id is not None:
+        await state.update_data(new_habit_group=group_id)
     await callback.message.answer("Как назовём привычку?", reply_markup=ReplyKeyboardRemove())
     await state.set_state(Form.waiting_habit_name)
     await callback.answer()
@@ -1206,17 +1176,6 @@ async def new_habit_name(message: types.Message, state: FSMContext):
 
     data = await state.get_data()
     selected_group = data.get("new_habit_group")
-    groups = await get_habit_groups(message.from_user.id)
-
-    if selected_group is None and groups:
-        await state.update_data(pending_habit_name=name)
-        await state.set_state(Form.waiting_habit_group)
-        await message.answer(
-            f"Куда добавить <b>{escape(name)}</b>?",
-            parse_mode="HTML",
-            reply_markup=new_habit_group_picker(groups),
-        )
-        return
 
     await save_habit(message.from_user.id, name, group_id=selected_group)
     await state.clear()
@@ -1225,24 +1184,6 @@ async def new_habit_name(message: types.Message, state: FSMContext):
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
-
-
-@router.callback_query(Form.waiting_habit_group, F.data.startswith("new_habit_to_"))
-async def finish_new_habit(callback: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    name = data.get("pending_habit_name")
-    if not name:
-        await callback.answer("Название потерялось. Попробуй ещё раз.", show_alert=True)
-        await state.clear()
-        return
-
-    value = callback.data.removeprefix("new_habit_to_")
-    group_id = None if value == "none" else int(value)
-    await save_habit(callback.from_user.id, name, group_id=group_id)
-    await state.clear()
-    await callback.message.edit_text(f"🟢 Готово: <b>{escape(name)}</b>", parse_mode="HTML")
-    await callback.message.answer("Привычка добавлена.", reply_markup=main_keyboard)
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("habit_group_"))
