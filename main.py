@@ -4,7 +4,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from bot import bot, dp
-from routers import daily_reminder, router
+from routers import APP_VERSION, daily_reminder, router
 from db import init_db
 
 logging.basicConfig(
@@ -15,6 +15,7 @@ logging.basicConfig(
 
 async def main():
     await init_db()
+    logging.info("HabitFlow version: %s", APP_VERSION)
 
     dp.include_router(router)
 

@@ -49,6 +49,7 @@ from db import (
 
 router = Router()
 logger = logging.getLogger(__name__)
+APP_VERSION = "2026.06.23.1"
 
 REMINDER_PRESETS = {
     "morning": ("Утро", ["08:00"]),
@@ -584,6 +585,11 @@ async def start(message: types.Message):
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
+
+
+@router.message(Command("version"))
+async def version(message: types.Message):
+    await message.answer(f"HabitFlow <b>{APP_VERSION}</b>", parse_mode="HTML")
 
 
 @router.message(F.text.in_(["🟢 Сегодня", "Сегодня"]))
