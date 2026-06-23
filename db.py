@@ -60,6 +60,8 @@ async def init_db():
         habit_columns = {row[1] for row in await cursor.fetchall()}
         if "group_id" not in habit_columns:
             await db.execute("ALTER TABLE habits ADD COLUMN group_id INTEGER")
+        if "progress_unit" not in habit_columns:
+            await db.execute("ALTER TABLE habits ADD COLUMN progress_unit TEXT")
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS habit_logs (
@@ -90,6 +92,19 @@ async def init_db():
                 enabled BOOLEAN DEFAULT 1,
                 reminder_time TEXT NOT NULL,
                 PRIMARY KEY(user_id, habit_id)
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS habit_progress (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                habit_id INTEGER NOT NULL,
+                progress_date TEXT NOT NULL,
+                value REAL NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, habit_id, progress_date)
             )
         """)
 
@@ -329,9 +344,84 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
         await db.execute("DELETE FROM habit_logs WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
         await db.execute("DELETE FROM habit_misses WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
         await db.execute("DELETE FROM habit_reminders WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
+        await db.execute("DELETE FROM habit_progress WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
         await db.execute("DELETE FROM habits WHERE id = ? AND user_id = ?", (habit_id, user_id))
         await db.commit()
     return True
+
+
+async def save_habit_progress(
+    user_id: int,
+    habit_id: int,
+    value: float,
+    unit: str | None = None,
+) -> bool:
+    now = datetime.now().isoformat(timespec="seconds")
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT progress_unit
+            FROM habits
+            WHERE id = ? AND user_id = ?
+        """, (habit_id, user_id))
+        row = await cursor.fetchone()
+        if not row:
+            return False
+
+        saved_unit = unit or row[0]
+        if not saved_unit:
+            return False
+
+        if unit:
+            await db.execute("""
+                UPDATE habits
+                SET progress_unit = ?
+                WHERE id = ? AND user_id = ?
+            """, (unit, habit_id, user_id))
+
+        await db.execute("""
+            INSERT INTO habit_progress
+                (user_id, habit_id, progress_date, value, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, habit_id, progress_date) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+        """, (user_id, habit_id, today_str(), value, now, now))
+        await db.commit()
+        return True
+
+
+async def get_habit_progress_summary(user_id: int, habit_id: int) -> dict | None:
+    dates_30 = date_range(30)
+    dates_7 = set(dates_30[-7:])
+    today = today_str()
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT progress_unit
+            FROM habits
+            WHERE id = ? AND user_id = ?
+        """, (habit_id, user_id))
+        habit = await cursor.fetchone()
+        if not habit:
+            return None
+
+        cursor = await db.execute("""
+            SELECT progress_date, value
+            FROM habit_progress
+            WHERE user_id = ? AND habit_id = ? AND progress_date >= ?
+            ORDER BY progress_date ASC
+        """, (user_id, habit_id, dates_30[0]))
+        rows = await cursor.fetchall()
+
+    values = {progress_date: value for progress_date, value in rows}
+    return {
+        "unit": habit[0],
+        "today": values.get(today),
+        "seven_days": sum(value for date, value in values.items() if date in dates_7),
+        "thirty_days": sum(values.values()),
+        "days_recorded": len(values),
+    }
 
 
 async def record_habit_miss(user_id: int, habit_id: int, missed_date: str | None = None) -> bool:

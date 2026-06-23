@@ -1,5 +1,6 @@
 # routers.py
 import logging
+import re
 from datetime import datetime
 from html import escape
 from zoneinfo import ZoneInfo
@@ -27,6 +28,7 @@ from db import (
     get_habit_group,
     get_habit_groups,
     get_habit_logs,
+    get_habit_progress_summary,
     get_habit_reminder,
     get_missed_habit_ids,
     get_user_habits,
@@ -37,6 +39,7 @@ from db import (
     parse_reminder_times,
     record_habit_miss,
     save_habit,
+    save_habit_progress,
     set_habit_group,
     set_habit_reminder,
     today_str,
@@ -61,6 +64,7 @@ class Form(StatesGroup):
     waiting_group_name = State()
     waiting_new_name = State()
     waiting_habit_reminder_time = State()
+    waiting_habit_progress = State()
 
 
 main_keyboard = ReplyKeyboardMarkup(
@@ -130,6 +134,28 @@ def normalize_reminder_times(value: str) -> list[str]:
         times.append(reminder_time)
 
     return sorted(set(times))
+
+
+def parse_progress_value(value: str) -> tuple[float, str | None] | None:
+    match = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*(.*?)\s*", value)
+    if not match:
+        return None
+
+    amount = float(match.group(1).replace(",", "."))
+    unit = match.group(2).strip().lower() or None
+    if amount <= 0 or amount > 1_000_000:
+        return None
+    if unit and len(unit) > 24:
+        return None
+    return amount, unit
+
+
+def format_progress_value(value: float | None, unit: str | None) -> str:
+    if value is None:
+        return "нет"
+    number = f"{value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    safe_unit = escape(unit) if unit else ""
+    return f"{number} {safe_unit}".strip()
 
 
 def completed_analysis_dates(dates: list[str]) -> list[str]:
@@ -265,6 +291,7 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
     today_missed = await is_habit_missed(user_id, habit_id)
     reminder = await get_habit_reminder(user_id, habit_id)
     group = await get_habit_group(user_id, habit[7]) if habit[7] is not None else None
+    progress = await get_habit_progress_summary(user_id, habit_id)
 
     return {
         "habit": habit,
@@ -280,6 +307,7 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
         "today_missed": today_missed,
         "reminder": reminder,
         "group": group,
+        "progress": progress,
     }
 
 
@@ -293,6 +321,15 @@ def format_habit_diary_text(item: dict) -> str:
         else "нет"
     )
     group_text = group_name(item["group"]) if item["group"] else "без папки"
+    progress = item["progress"]
+    progress_text = ""
+    if progress and (progress["unit"] or progress["today"] is not None):
+        progress_text = (
+            "\n\n📏 <b>Прогресс</b>\n"
+            f"Сегодня: <b>{format_progress_value(progress['today'], progress['unit'])}</b>\n"
+            f"7 дней: <b>{format_progress_value(progress['seven_days'], progress['unit'])}</b>\n"
+            f"30 дней: <b>{format_progress_value(progress['thirty_days'], progress['unit'])}</b>"
+        )
     return (
         f"📖 <b>{habit_name(habit)}</b>\n\n"
         f"Сегодня: <b>{today_status}</b>\n"
@@ -300,7 +337,8 @@ def format_habit_diary_text(item: dict) -> str:
         f"Напоминание: <b>{reminder_text}</b>\n"
         f"30 дней: <b>{item['done']}/{item['possible']} · {item['rate']}%</b>\n"
         f"7 дней: <b>{item['current_done']}/{item['current_possible']} · {item['current_rate']}%</b>\n\n"
-        f"🗓 <b>Календарь</b>\n<code>{item['calendar']}</code>\n\n"
+        f"🗓 <b>Календарь</b>\n<code>{item['calendar']}</code>"
+        f"{progress_text}\n\n"
         "Сегодня не входит в проценты до конца дня."
     )
 
@@ -430,6 +468,7 @@ def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool, re
     elif missed_today:
         rows.append([InlineKeyboardButton(text="✅ Всё-таки выполнил", callback_data=f"mark_diary_{habit_id}")])
     rows.extend([
+        [InlineKeyboardButton(text="📏 Записать прогресс", callback_data=f"progress_open_{habit_id}")],
         [InlineKeyboardButton(text=reminder_button_text(reminder), callback_data=f"habit_reminder_custom_{habit_id}")],
         [InlineKeyboardButton(text="📁 Папка", callback_data=f"habit_group_{habit_id}")],
         [
@@ -685,6 +724,91 @@ async def process_miss_diary_callback(callback: types.CallbackQuery):
         callback,
         format_habit_diary_text(item),
         habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+    )
+
+
+@router.callback_query(F.data.startswith("progress_open_"))
+async def open_habit_progress(callback: types.CallbackQuery, state: FSMContext):
+    habit_id = int(callback.data.split("_")[-1])
+    progress = await get_habit_progress_summary(callback.from_user.id, habit_id)
+    if progress is None:
+        await callback.answer("Привычка не найдена", show_alert=True)
+        return
+
+    await state.update_data(progress_habit_id=habit_id)
+    await state.set_state(Form.waiting_habit_progress)
+
+    if progress["unit"]:
+        example = f"Напиши число в <b>{escape(progress['unit'])}</b>, например: <b>20</b>."
+    else:
+        example = (
+            "Напиши число и единицу, например:\n"
+            "<b>20 страниц</b>\n"
+            "<b>2 минуты</b>\n"
+            "<b>1,5 км</b>"
+        )
+
+    current = ""
+    if progress["today"] is not None:
+        current = (
+            "\n\nСегодня уже записано: "
+            f"<b>{format_progress_value(progress['today'], progress['unit'])}</b>.\n"
+            "Новое значение заменит его."
+        )
+
+    await callback.message.answer(
+        f"📏 <b>Прогресс за сегодня</b>\n\n{example}{current}",
+        parse_mode="HTML",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await callback.answer()
+
+
+@router.message(Form.waiting_habit_progress)
+async def save_progress_message(message: types.Message, state: FSMContext):
+    parsed = parse_progress_value(message.text or "")
+    if not parsed:
+        await message.answer("Не понял значение. Напиши, например: <b>20 страниц</b> или <b>2,5 минуты</b>.", parse_mode="HTML")
+        return
+
+    amount, unit = parsed
+    data = await state.get_data()
+    habit_id = data.get("progress_habit_id")
+    if not habit_id:
+        await state.clear()
+        await message.answer("Не нашёл привычку. Открой её ещё раз.", reply_markup=main_keyboard)
+        return
+
+    current = await get_habit_progress_summary(message.from_user.id, habit_id)
+    if not current:
+        await state.clear()
+        await message.answer("Привычка не найдена.", reply_markup=main_keyboard)
+        return
+    if not unit and not current["unit"]:
+        await message.answer("В первый раз добавь единицу: <b>20 страниц</b> или <b>2 минуты</b>.", parse_mode="HTML")
+        return
+
+    saved = await save_habit_progress(message.from_user.id, habit_id, amount, unit)
+    if not saved:
+        await message.answer("Не получилось сохранить прогресс. Попробуй ещё раз.")
+        return
+
+    await mark_habit_completed(message.from_user.id, habit_id)
+    await state.clear()
+    item = await habit_diary(message.from_user.id, habit_id, days=30)
+    if not item:
+        await message.answer("Прогресс сохранён.", reply_markup=main_keyboard)
+        return
+
+    await message.answer(
+        format_habit_diary_text(item),
+        parse_mode="HTML",
+        reply_markup=habit_diary_keyboard(
+            habit_id,
+            item["today_done"],
+            item["today_missed"],
+            item["reminder"],
+        ),
     )
 
 
