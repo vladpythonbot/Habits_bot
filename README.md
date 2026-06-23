@@ -5,6 +5,8 @@ Minimal Telegram bot for tracking daily habits without pressure. The bot focuses
 ## Features
 
 - Create and manage personal habits
+- Organize related habits into separate folders
+- Keep folder statistics separate from general statistics
 - Mark a habit as completed today
 - Mark a habit as "not today"
 - Per-habit diary with 30-day history
@@ -13,7 +15,7 @@ Minimal Telegram bot for tracking daily habits without pressure. The bot focuses
 - 30-day completion statistics
 - Comparison of the latest 7 completed days with the previous 7 days
 - Compact 7-day habit chart with emoji markers
-- SQLite storage for habits, logs, misses, and reminders
+- SQLite storage for habits, folders, logs, misses, and reminders
 
 ## Tech Stack
 

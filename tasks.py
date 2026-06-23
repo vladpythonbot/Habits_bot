@@ -26,7 +26,7 @@ async def daily_reminder_and_reset():
 
         unmarked = []
         for habit in habits:
-            habit_id, habit_name, created_date, _, total_completed, last_date, _ = habit
+            habit_id, habit_name, created_date, _, total_completed, last_date, _, _ = habit
 
             if last_date != today:
                 unmarked.append((habit_id, habit_name))

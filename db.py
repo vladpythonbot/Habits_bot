@@ -47,6 +47,21 @@ async def init_db():
         """)
 
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS habit_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                group_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(user_id, group_name)
+            )
+        """)
+
+        cursor = await db.execute("PRAGMA table_info(habits)")
+        habit_columns = {row[1] for row in await cursor.fetchall()}
+        if "group_id" not in habit_columns:
+            await db.execute("ALTER TABLE habits ADD COLUMN group_id INTEGER")
+
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS habit_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -88,26 +103,116 @@ async def init_db():
         await db.commit()
 
 
-async def save_habit(user_id: int, habit_name: str, goal_days: int = 30):
+async def save_habit(user_id: int, habit_name: str, goal_days: int = 30, group_id: int | None = None):
     async with aiosqlite.connect(DB_NAME) as db:
+        if group_id is not None:
+            cursor = await db.execute("""
+                SELECT 1
+                FROM habit_groups
+                WHERE id = ? AND user_id = ?
+            """, (group_id, user_id))
+            if not await cursor.fetchone():
+                group_id = None
+
         await db.execute("""
             INSERT INTO habits
-            (user_id, habit_name, created_date, last_completed_date, streak, total_completed, goal_days)
-            VALUES (?, ?, ?, NULL, 0, 0, ?)
-        """, (user_id, habit_name, today_str(), goal_days))
+            (user_id, habit_name, created_date, last_completed_date, streak, total_completed, goal_days, group_id)
+            VALUES (?, ?, ?, NULL, 0, 0, ?, ?)
+        """, (user_id, habit_name, today_str(), goal_days, group_id))
         await db.commit()
 
-async def get_user_habits(user_id: int):
+
+async def get_user_habits(user_id: int, group_id: int | None = None, ungrouped_only: bool = False):
     await refresh_missed_streaks(user_id)
 
+    conditions = ["user_id = ?"]
+    params: list[int] = [user_id]
+    if group_id is not None:
+        conditions.append("group_id = ?")
+        params.append(group_id)
+    elif ungrouped_only:
+        conditions.append("group_id IS NULL")
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(f"""
+            SELECT id, habit_name, created_date, streak, total_completed, last_completed_date, goal_days, group_id
+            FROM habits
+            WHERE {' AND '.join(conditions)}
+            ORDER BY created_date ASC, id ASC
+        """, params)
+        return await cursor.fetchall()
+
+
+async def create_habit_group(user_id: int, group_name: str) -> tuple[bool, int | None]:
+    async with aiosqlite.connect(DB_NAME) as db:
+        try:
+            cursor = await db.execute("""
+                INSERT INTO habit_groups (user_id, group_name, created_at)
+                VALUES (?, ?, ?)
+            """, (user_id, group_name, datetime.now().isoformat(timespec="seconds")))
+            await db.commit()
+            return True, cursor.lastrowid
+        except aiosqlite.IntegrityError:
+            return False, None
+
+
+async def get_habit_groups(user_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT id, habit_name, created_date, streak, total_completed, last_completed_date, goal_days
-            FROM habits
-            WHERE user_id = ?
-            ORDER BY created_date ASC
+            SELECT g.id, g.group_name, COUNT(h.id)
+            FROM habit_groups AS g
+            LEFT JOIN habits AS h
+                ON h.group_id = g.id AND h.user_id = g.user_id
+            WHERE g.user_id = ?
+            GROUP BY g.id, g.group_name, g.created_at
+            ORDER BY g.created_at ASC, g.id ASC
         """, (user_id,))
         return await cursor.fetchall()
+
+
+async def get_habit_group(user_id: int, group_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT id, group_name
+            FROM habit_groups
+            WHERE id = ? AND user_id = ?
+        """, (group_id, user_id))
+        return await cursor.fetchone()
+
+
+async def set_habit_group(user_id: int, habit_id: int, group_id: int | None) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        if group_id is not None:
+            cursor = await db.execute("""
+                SELECT 1
+                FROM habit_groups
+                WHERE id = ? AND user_id = ?
+            """, (group_id, user_id))
+            if not await cursor.fetchone():
+                return False
+
+        cursor = await db.execute("""
+            UPDATE habits
+            SET group_id = ?
+            WHERE id = ? AND user_id = ?
+        """, (group_id, habit_id, user_id))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def delete_habit_group(user_id: int, group_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            UPDATE habits
+            SET group_id = NULL
+            WHERE group_id = ? AND user_id = ?
+        """, (group_id, user_id))
+        cursor = await db.execute("""
+            DELETE FROM habit_groups
+            WHERE id = ? AND user_id = ?
+        """, (group_id, user_id))
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 async def mark_habit_completed(user_id: int, habit_id: int):
@@ -307,34 +412,47 @@ async def refresh_missed_streaks(user_id: int):
         await db.commit()
 
 
-async def get_user_stats(user_id: int, days: int = 30):
-    habits = await get_user_habits(user_id)
+async def get_user_stats(user_id: int, days: int = 30, group_id: int | None = None):
+    habits = await get_user_habits(user_id, group_id=group_id, ungrouped_only=group_id is None)
     dates = date_range(days)
     today = today_str()
     completed_dates = [date for date in dates if date != today]
     first_date = dates[0]
+    group_condition = "h.group_id = ?" if group_id is not None else "h.group_id IS NULL"
+    group_params = [group_id] if group_id is not None else []
 
     async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT completed_date, COUNT(*)
-            FROM habit_logs
-            WHERE user_id = ? AND completed_date >= ?
-            GROUP BY completed_date
-        """, (user_id, first_date))
+        cursor = await db.execute(f"""
+            SELECT l.completed_date, COUNT(*)
+            FROM habit_logs AS l
+            JOIN habits AS h
+                ON h.id = l.habit_id AND h.user_id = l.user_id
+            WHERE l.user_id = ?
+              AND l.completed_date >= ?
+              AND {group_condition}
+            GROUP BY l.completed_date
+        """, [user_id, first_date, *group_params])
         daily_rows = await cursor.fetchall()
 
-        cursor = await db.execute("""
+        cursor = await db.execute(f"""
             SELECT COUNT(*)
-            FROM habit_logs
-            WHERE user_id = ?
-        """, (user_id,))
+            FROM habit_logs AS l
+            JOIN habits AS h
+                ON h.id = l.habit_id AND h.user_id = l.user_id
+            WHERE l.user_id = ?
+              AND {group_condition}
+        """, [user_id, *group_params])
         total_completed = (await cursor.fetchone())[0]
 
-        cursor = await db.execute("""
+        cursor = await db.execute(f"""
             SELECT COUNT(*)
-            FROM habit_misses
-            WHERE user_id = ? AND missed_date >= ?
-        """, (user_id, first_date))
+            FROM habit_misses AS m
+            JOIN habits AS h
+                ON h.id = m.habit_id AND h.user_id = m.user_id
+            WHERE m.user_id = ?
+              AND m.missed_date >= ?
+              AND {group_condition}
+        """, [user_id, first_date, *group_params])
         recorded_misses = (await cursor.fetchone())[0]
 
     daily_done = {date: count for date, count in daily_rows}
