@@ -14,7 +14,6 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
 )
 
 from bot import bot
@@ -49,7 +48,7 @@ from db import (
 
 router = Router()
 logger = logging.getLogger(__name__)
-APP_VERSION = "2026.06.23.2"
+APP_VERSION = "2026.06.23.3"
 
 REMINDER_PRESETS = {
     "morning": ("Утро", ["08:00"]),
@@ -74,6 +73,7 @@ main_keyboard = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
+    is_persistent=True,
 )
 
 
@@ -566,7 +566,9 @@ def habit_group_picker(habit_id: int, groups) -> InlineKeyboardMarkup:
 
 
 @router.message(Command("start"))
-async def start(message: types.Message):
+async def start(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Меню всегда под рукой.", reply_markup=main_keyboard)
     await show_today(message, message.from_user.id)
 
 
@@ -576,13 +578,15 @@ async def version(message: types.Message):
 
 
 @router.message(F.text.in_(["🟢 Сегодня", "Сегодня"]))
-async def today(message: types.Message):
+async def today(message: types.Message, state: FSMContext):
+    await state.clear()
     await show_today(message, message.from_user.id)
 
 
 @router.message(Command("stats"))
 @router.message(F.text.in_(["🔵 Статистика", "Статистика"]))
-async def statistics(message: types.Message):
+async def statistics(message: types.Message, state: FSMContext):
+    await state.clear()
     await show_statistics(message, message.from_user.id)
 
 
@@ -782,7 +786,7 @@ async def open_habit_progress(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer(
         f"📏 <b>Прогресс за сегодня</b>\n\n{example}{current}",
         parse_mode="HTML",
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=main_keyboard,
     )
     await callback.answer()
 
@@ -1055,7 +1059,8 @@ async def process_miss_callback(callback: types.CallbackQuery):
 
 
 @router.message(F.text.in_(["🟣 Привычки", "Привычки"]))
-async def habits(message: types.Message):
+async def habits(message: types.Message, state: FSMContext):
+    await state.clear()
     await show_habits(message, message.from_user.id)
 
 
@@ -1120,7 +1125,7 @@ async def open_group(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "add_group")
 async def new_group_start(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("Как назовём папку?", reply_markup=ReplyKeyboardRemove())
+    await callback.message.answer("Как назовём папку?", reply_markup=main_keyboard)
     await state.set_state(Form.waiting_group_name)
     await callback.answer()
 
@@ -1157,7 +1162,7 @@ async def new_habit_start(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     if group_id is not None:
         await state.update_data(new_habit_group=group_id)
-    await callback.message.answer("Как назовём привычку?", reply_markup=ReplyKeyboardRemove())
+    await callback.message.answer("Как назовём привычку?", reply_markup=main_keyboard)
     await state.set_state(Form.waiting_habit_name)
     await callback.answer()
 
@@ -1259,7 +1264,7 @@ async def delete_group(callback: types.CallbackQuery):
 async def start_edit_name(callback: types.CallbackQuery, state: FSMContext):
     habit_id = int(callback.data.split("_")[1])
     await state.update_data(editing_habit_id=habit_id)
-    await callback.message.answer("Новое название привычки:", reply_markup=ReplyKeyboardRemove())
+    await callback.message.answer("Новое название привычки:", reply_markup=main_keyboard)
     await state.set_state(Form.waiting_new_name)
     await callback.answer()
 
