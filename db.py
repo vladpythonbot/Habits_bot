@@ -118,7 +118,13 @@ async def init_db():
         await db.commit()
 
 
-async def save_habit(user_id: int, habit_name: str, goal_days: int = 30, group_id: int | None = None):
+async def save_habit(
+    user_id: int,
+    habit_name: str,
+    goal_days: int = 30,
+    group_id: int | None = None,
+    progress_unit: str | None = None,
+):
     async with aiosqlite.connect(DB_NAME) as db:
         if group_id is not None:
             cursor = await db.execute("""
@@ -131,9 +137,9 @@ async def save_habit(user_id: int, habit_name: str, goal_days: int = 30, group_i
 
         await db.execute("""
             INSERT INTO habits
-            (user_id, habit_name, created_date, last_completed_date, streak, total_completed, goal_days, group_id)
-            VALUES (?, ?, ?, NULL, 0, 0, ?, ?)
-        """, (user_id, habit_name, today_str(), goal_days, group_id))
+            (user_id, habit_name, created_date, last_completed_date, streak, total_completed, goal_days, group_id, progress_unit)
+            VALUES (?, ?, ?, NULL, 0, 0, ?, ?, ?)
+        """, (user_id, habit_name, today_str(), goal_days, group_id, progress_unit))
         await db.commit()
 
 
@@ -150,7 +156,7 @@ async def get_user_habits(user_id: int, group_id: int | None = None, ungrouped_o
 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(f"""
-            SELECT id, habit_name, created_date, streak, total_completed, last_completed_date, goal_days, group_id
+            SELECT id, habit_name, created_date, streak, total_completed, last_completed_date, goal_days, group_id, progress_unit
             FROM habits
             WHERE {' AND '.join(conditions)}
             ORDER BY created_date ASC, id ASC

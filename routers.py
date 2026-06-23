@@ -48,7 +48,13 @@ from db import (
 
 router = Router()
 logger = logging.getLogger(__name__)
-APP_VERSION = "2026.06.23.3"
+APP_VERSION = "2026.06.23.4"
+PROGRESS_UNIT_PRESETS = {
+    "pages": "страниц",
+    "minutes": "минут",
+    "times": "раз",
+    "km": "км",
+}
 
 REMINDER_PRESETS = {
     "morning": ("Утро", ["08:00"]),
@@ -60,6 +66,7 @@ REMINDER_PRESETS = {
 
 class Form(StatesGroup):
     waiting_habit_name = State()
+    waiting_habit_progress_unit = State()
     waiting_group_name = State()
     waiting_new_name = State()
     waiting_habit_reminder_time = State()
@@ -85,6 +92,10 @@ def progress_bar(percent: int, width: int = 10) -> str:
 
 def habit_name(habit) -> str:
     return escape(habit[1])
+
+
+def habit_tracks_progress(habit) -> bool:
+    return len(habit) > 8 and bool(habit[8])
 
 
 def group_name(group) -> str:
@@ -148,6 +159,19 @@ def parse_progress_value(value: str) -> tuple[float, str | None] | None:
     if unit and len(unit) > 24:
         return None
     return amount, unit
+
+
+def normalize_progress_unit(value: str) -> str | None:
+    value = value.strip().lower()
+    parsed = parse_progress_value(value)
+    if parsed and parsed[1]:
+        value = parsed[1]
+    value = re.sub(r"\s+", " ", value).strip()
+    if len(value) < 1 or len(value) > 24:
+        return None
+    if re.search(r"\d", value):
+        return None
+    return value
 
 
 def format_progress_value(value: float | None, unit: str | None) -> str:
@@ -454,7 +478,40 @@ def reminder_button_text(reminder: dict | None) -> str:
     return "⏰ Напомнить"
 
 
-def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool, reminder: dict | None = None) -> InlineKeyboardMarkup:
+def habit_type_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Просто да / нет", callback_data="habit_type_check"),
+            InlineKeyboardButton(text="📏 С результатом", callback_data="habit_type_progress"),
+        ],
+    ])
+
+
+def progress_unit_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="страниц", callback_data="habit_unit_pages"),
+            InlineKeyboardButton(text="минут", callback_data="habit_unit_minutes"),
+        ],
+        [
+            InlineKeyboardButton(text="раз", callback_data="habit_unit_times"),
+            InlineKeyboardButton(text="км", callback_data="habit_unit_km"),
+        ],
+    ])
+
+
+def habit_has_progress(item: dict) -> bool:
+    progress = item.get("progress")
+    return bool(progress and progress.get("unit"))
+
+
+def habit_diary_keyboard(
+    habit_id: int,
+    done_today: bool,
+    missed_today: bool,
+    reminder: dict | None = None,
+    show_progress: bool = False,
+) -> InlineKeyboardMarkup:
     rows = []
     if done_today:
         rows.append([
@@ -467,11 +524,12 @@ def habit_diary_keyboard(habit_id: int, done_today: bool, missed_today: bool, re
         ])
     elif missed_today:
         rows.append([InlineKeyboardButton(text="✅ Всё-таки выполнил", callback_data=f"mark_diary_{habit_id}")])
+    action_row = []
+    if show_progress:
+        action_row.append(InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit_id}"))
+    action_row.append(InlineKeyboardButton(text="⚙️ Настройки", callback_data=f"habit_settings_{habit_id}"))
     rows.extend([
-        [
-            InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit_id}"),
-            InlineKeyboardButton(text="⚙️ Настройки", callback_data=f"habit_settings_{habit_id}"),
-        ],
+        action_row,
         [InlineKeyboardButton(text="🟣 Все привычки", callback_data="open_habits")],
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -663,7 +721,7 @@ async def show_habit_diary(callback: types.CallbackQuery, state: FSMContext):
     await answer_or_edit(
         callback,
         format_habit_diary_text(item),
-        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"], habit_has_progress(item)),
     )
 
 
@@ -710,7 +768,7 @@ async def process_mark_diary_callback(callback: types.CallbackQuery):
     await answer_or_edit(
         callback,
         format_habit_diary_text(item),
-        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"], habit_has_progress(item)),
     )
 
 
@@ -732,7 +790,7 @@ async def process_undo_diary_callback(callback: types.CallbackQuery):
     await answer_or_edit(
         callback,
         format_habit_diary_text(item),
-        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"], habit_has_progress(item)),
     )
 
 
@@ -750,7 +808,7 @@ async def process_miss_diary_callback(callback: types.CallbackQuery):
     await answer_or_edit(
         callback,
         format_habit_diary_text(item),
-        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"], habit_has_progress(item)),
     )
 
 
@@ -852,7 +910,7 @@ async def set_habit_reminder_preset(callback: types.CallbackQuery, state: FSMCon
     await answer_or_edit(
         callback,
         format_habit_diary_text(item),
-        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"], habit_has_progress(item)),
     )
 
 
@@ -887,7 +945,7 @@ async def disable_habit_reminder_callback(callback: types.CallbackQuery, state: 
     await answer_or_edit(
         callback,
         format_habit_diary_text(item),
-        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+        habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"], habit_has_progress(item)),
     )
 
 
@@ -958,7 +1016,7 @@ async def save_custom_habit_reminder_time(message: types.Message, state: FSMCont
     await message.answer(
         format_habit_diary_text(item),
         parse_mode="HTML",
-        reply_markup=habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"]),
+        reply_markup=habit_diary_keyboard(habit_id, item["today_done"], item["today_missed"], item["reminder"], habit_has_progress(item)),
     )
 
 
@@ -998,23 +1056,29 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
             habit_id = habit[0]
             folder = f"📁 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
-            rows.append([
-                InlineKeyboardButton(text=f"✅ {habit[1][:18]}", callback_data=f"mark_{habit_id}"),
-                InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit_id}"),
-            ])
+            if habit_tracks_progress(habit):
+                rows.append([
+                    InlineKeyboardButton(text=f"📏 {habit[1][:18]}", callback_data=f"progress_open_{habit_id}"),
+                ])
+            else:
+                rows.append([
+                    InlineKeyboardButton(text=f"✅ {habit[1][:18]}", callback_data=f"mark_{habit_id}"),
+                ])
 
     if completed:
         text += "\n\n<b>Выполнено:</b>"
         for habit in completed:
             folder = f"📁 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
-            rows.append([
+            row = [
                 InlineKeyboardButton(
                     text=f"↩️ Отменить: {habit[1][:18]}",
                     callback_data=f"undo_{habit[0]}",
                 ),
-                InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit[0]}"),
-            ])
+            ]
+            if habit_tracks_progress(habit):
+                row.append(InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit[0]}"))
+            rows.append(row)
 
     rows.append([InlineKeyboardButton(text="➕ Добавить", callback_data="add_habit")])
     rows.append([
@@ -1085,7 +1149,7 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
         if ungrouped:
             text += "\n\n<b>Без папки</b>"
         for habit in ungrouped:
-            _, _, _, _, total_completed, last_date, _, _ = habit
+            _, _, _, _, total_completed, last_date, _, _, *_ = habit
             done_today = " 🟢" if last_date == today_str() else ""
             text += (
                 f"\n📖 <b>{habit_name(habit)}</b>{done_today}\n"
@@ -1179,16 +1243,100 @@ async def new_habit_name(message: types.Message, state: FSMContext):
         await message.answer("Давай короче: до 40 символов.")
         return
 
-    data = await state.get_data()
-    selected_group = data.get("new_habit_group")
+    await state.update_data(new_habit_name=name)
+    await message.answer(
+        f"<b>{escape(name)}</b>\n\nЧто отслеживаем?",
+        parse_mode="HTML",
+        reply_markup=habit_type_keyboard(),
+    )
 
-    await save_habit(message.from_user.id, name, group_id=selected_group)
+
+@router.callback_query(F.data.startswith("habit_type_"))
+async def choose_habit_type(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    name = data.get("new_habit_name")
+    group_id = data.get("new_habit_group")
+
+    if not name:
+        await callback.answer("Сначала напиши название привычки", show_alert=True)
+        return
+
+    habit_type = callback.data.removeprefix("habit_type_")
+    if habit_type == "check":
+        await save_habit(callback.from_user.id, name, group_id=group_id)
+        await state.clear()
+        await callback.message.answer(
+            f"🟢 Готово: <b>{escape(name)}</b>\nТеперь просто отмечай выполнение.",
+            parse_mode="HTML",
+            reply_markup=main_keyboard,
+        )
+        await show_today(callback.message, callback.from_user.id)
+        await callback.answer()
+        return
+
+    if habit_type == "progress":
+        await callback.message.answer(
+            "Что будем считать?\n\nВыбери кнопку или напиши своё: <b>страниц</b>, <b>минут</b>, <b>раз</b>.",
+            parse_mode="HTML",
+            reply_markup=progress_unit_keyboard(),
+        )
+        await state.set_state(Form.waiting_habit_progress_unit)
+        await callback.answer()
+        return
+
+    await callback.answer("Не понял выбор", show_alert=True)
+
+
+async def create_progress_habit(
+    user_id: int,
+    name: str,
+    unit: str,
+    group_id: int | None,
+    state: FSMContext,
+    message: types.Message,
+):
+    await save_habit(user_id, name, group_id=group_id, progress_unit=unit)
     await state.clear()
     await message.answer(
-        f"🟢 Готово: <b>{escape(name)}</b>\nТеперь просто отмечай: есть сегодня или нет.",
+        f"🟢 Готово: <b>{escape(name)}</b>\nТеперь на сегодня вводи число в «{escape(unit)}».",
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
+    await show_today(message, user_id)
+
+
+@router.callback_query(F.data.startswith("habit_unit_"))
+async def choose_progress_unit(callback: types.CallbackQuery, state: FSMContext):
+    key = callback.data.removeprefix("habit_unit_")
+    unit = PROGRESS_UNIT_PRESETS.get(key)
+    data = await state.get_data()
+    name = data.get("new_habit_name")
+    group_id = data.get("new_habit_group")
+
+    if not name or not unit:
+        await callback.answer("Не получилось создать привычку", show_alert=True)
+        return
+
+    await create_progress_habit(callback.from_user.id, name, unit, group_id, state, callback.message)
+    await callback.answer()
+
+
+@router.message(Form.waiting_habit_progress_unit)
+async def new_habit_progress_unit(message: types.Message, state: FSMContext):
+    unit = normalize_progress_unit(message.text or "")
+    if not unit:
+        await message.answer("Напиши только единицу измерения: <b>страниц</b>, <b>минут</b>, <b>раз</b>.", parse_mode="HTML")
+        return
+
+    data = await state.get_data()
+    name = data.get("new_habit_name")
+    group_id = data.get("new_habit_group")
+    if not name:
+        await state.clear()
+        await message.answer("Не нашёл название привычки. Добавь её ещё раз.", reply_markup=main_keyboard)
+        return
+
+    await create_progress_habit(message.from_user.id, name, unit, group_id, state, message)
 
 
 @router.callback_query(F.data.startswith("habit_group_"))
@@ -1213,6 +1361,7 @@ async def habit_group_actions(callback: types.CallbackQuery):
                     item["today_done"],
                     item["today_missed"],
                     item["reminder"],
+                    habit_has_progress(item),
                 ),
             )
         await callback.answer("Папка обновлена")
