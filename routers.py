@@ -48,7 +48,7 @@ from db import (
 
 router = Router()
 logger = logging.getLogger(__name__)
-APP_VERSION = "2026.06.23.4"
+APP_VERSION = "2026.06.23.5"
 PROGRESS_UNIT_PRESETS = {
     "pages": "страниц",
     "minutes": "минут",
@@ -344,7 +344,7 @@ def format_habit_diary_text(item: dict) -> str:
         if reminder and reminder["enabled"]
         else "нет"
     )
-    group_text = group_name(item["group"]) if item["group"] else "без папки"
+    group_text = group_name(item["group"]) if item["group"] else "Основные"
     progress = item["progress"]
     progress_text = ""
     if progress and (progress["unit"] or progress["today"] is not None):
@@ -357,7 +357,7 @@ def format_habit_diary_text(item: dict) -> str:
     return (
         f"📖 <b>{habit_name(habit)}</b>\n\n"
         f"Сегодня: <b>{today_status}</b>\n"
-        f"Папка: <b>{group_text}</b>\n"
+        f"Тема: <b>{group_text}</b>\n"
         f"Напоминание: <b>{reminder_text}</b>\n"
         f"30 дней: <b>{item['done']}/{item['possible']} · {item['rate']}%</b>\n"
         f"7 дней: <b>{item['current_done']}/{item['current_possible']} · {item['current_rate']}%</b>\n\n"
@@ -449,13 +449,13 @@ async def main_summary(user_id: int) -> str:
 def habit_actions_keyboard(habits, groups) -> InlineKeyboardMarkup:
     rows = [[
         InlineKeyboardButton(text="➕ Привычка", callback_data="add_habit"),
-        InlineKeyboardButton(text="📁 Папка", callback_data="add_group"),
+        InlineKeyboardButton(text="🎯 Тема", callback_data="add_group"),
     ]]
 
     for group in groups:
         rows.append([
             InlineKeyboardButton(
-                text=f"📁 {group[1][:22]} · {group[2]}",
+                text=f"🎯 {group[1][:22]} · {group[2]}",
                 callback_data=f"group_open_{group[0]}",
             ),
         ])
@@ -538,7 +538,7 @@ def habit_diary_keyboard(
 def habit_settings_keyboard(habit_id: int, reminder: dict | None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=reminder_button_text(reminder), callback_data=f"habit_reminder_custom_{habit_id}")],
-        [InlineKeyboardButton(text="📁 Папка", callback_data=f"habit_group_{habit_id}")],
+        [InlineKeyboardButton(text="🎯 Тема", callback_data=f"habit_group_{habit_id}")],
         [
             InlineKeyboardButton(text="✏️ Название", callback_data=f"edit_{habit_id}"),
             InlineKeyboardButton(text="🗑 Удалить", callback_data=f"delete_ask_{habit_id}"),
@@ -585,7 +585,7 @@ def stats_keyboard(groups=()) -> InlineKeyboardMarkup:
     for group in groups:
         rows.append([
             InlineKeyboardButton(
-                text=f"📁 {group[1][:24]}",
+                text=f"🎯 {group[1][:24]}",
                 callback_data=f"group_stats_{group[0]}",
             ),
         ])
@@ -604,18 +604,18 @@ def group_keyboard(group_id: int, habits) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=f"📖 {habit[1][:24]}", callback_data=f"habit_diary_{habit[0]}"),
         ])
     rows.extend([
-        [InlineKeyboardButton(text="🗑 Удалить папку", callback_data=f"group_delete_ask_{group_id}")],
+        [InlineKeyboardButton(text="🗑 Удалить тему", callback_data=f"group_delete_ask_{group_id}")],
         [InlineKeyboardButton(text="🟣 Все привычки", callback_data="open_habits")],
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def habit_group_picker(habit_id: int, groups) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="Без папки", callback_data=f"habit_group_set_{habit_id}_none")]]
+    rows = [[InlineKeyboardButton(text="Основные", callback_data=f"habit_group_set_{habit_id}_none")]]
     for group in groups:
         rows.append([
             InlineKeyboardButton(
-                text=f"📁 {group[1][:24]}",
+                text=f"🎯 {group[1][:24]}",
                 callback_data=f"habit_group_set_{habit_id}_{group[0]}",
             ),
         ])
@@ -655,10 +655,10 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
     if stats["habits_count"] == 0:
         text = (
             "🔵 <b>Общая статистика</b>\n\n"
-            "Здесь считаются только привычки без папки."
+            "Здесь считаются только основные привычки."
         )
         if groups:
-            text += "\nВыбери папку ниже, чтобы посмотреть её отдельно."
+            text += "\nТемы ниже считаются отдельно."
         else:
             text += "\nПока нечего считать. Добавь первую привычку."
         await answer_or_edit(
@@ -687,14 +687,14 @@ async def show_group_statistics(callback: types.CallbackQuery):
     group_id = int(callback.data.split("_")[-1])
     group = await get_habit_group(callback.from_user.id, group_id)
     if not group:
-        await callback.answer("Папка не найдена", show_alert=True)
+        await callback.answer("Тема не найдена", show_alert=True)
         return
 
     stats = await get_user_stats(callback.from_user.id, days=30, group_id=group_id)
     if stats["habits_count"] == 0:
         await answer_or_edit(
             callback,
-            f"🔵 <b>{group_name(group)}</b>\n\nВ этой папке пока нет привычек.",
+            f"🔵 <b>{group_name(group)}</b>\n\nВ этой теме пока нет привычек.",
             group_keyboard(group_id, []),
         )
         return
@@ -734,7 +734,7 @@ async def show_habit_settings(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Привычка не найдена", show_alert=True)
         return
 
-    folder = group_name(item["group"]) if item["group"] else "без папки"
+    folder = group_name(item["group"]) if item["group"] else "Основные"
     reminder = item["reminder"]
     reminder_text = (
         ", ".join(parse_reminder_times(reminder["reminder_time"]))
@@ -744,7 +744,7 @@ async def show_habit_settings(callback: types.CallbackQuery, state: FSMContext):
     await answer_or_edit(
         callback,
         f"⚙️ <b>{habit_name(item['habit'])}</b>\n\n"
-        f"Папка: <b>{folder}</b>\n"
+        f"Тема: <b>{folder}</b>\n"
         f"Напоминание: <b>{reminder_text}</b>",
         habit_settings_keyboard(habit_id, reminder),
     )
@@ -1054,7 +1054,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
         text += "\n\n<b>Сегодня не отмечено:</b>"
         for habit in unmarked:
             habit_id = habit[0]
-            folder = f"📁 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
+            folder = f"🎯 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
             if habit_tracks_progress(habit):
                 rows.append([
@@ -1068,7 +1068,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     if completed:
         text += "\n\n<b>Выполнено:</b>"
         for habit in completed:
-            folder = f"📁 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
+            folder = f"🎯 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
             row = [
                 InlineKeyboardButton(
@@ -1144,10 +1144,10 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
     if not habits:
         text = "🟣 <b>Дневник привычек</b>\n\nСписок пуст. Начнём с одной."
     else:
-        text = "🟣 <b>Дневник привычек</b>\n\nОбычные привычки и тематические папки."
+        text = "🟣 <b>Дневник привычек</b>\n\nОсновные привычки и отдельные темы."
         ungrouped = [habit for habit in habits if habit[7] is None]
         if ungrouped:
-            text += "\n\n<b>Без папки</b>"
+            text += "\n\n<b>Основные</b>"
         for habit in ungrouped:
             _, _, _, _, total_completed, last_date, _, _, *_ = habit
             done_today = " 🟢" if last_date == today_str() else ""
@@ -1159,7 +1159,7 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
         for group_id, group in group_map.items():
             group_habits = [habit for habit in habits if habit[7] == group_id]
             done = sum(1 for habit in group_habits if habit[5] == today_str())
-            text += f"\n\n📁 <b>{group_name(group)}</b>\nСегодня: {done}/{len(group_habits)}"
+            text += f"\n\n🎯 <b>{group_name(group)}</b>\nСегодня: {done}/{len(group_habits)}"
 
     await answer_or_edit(obj, text, habit_actions_keyboard(habits, groups))
 
@@ -1169,13 +1169,13 @@ async def open_group(callback: types.CallbackQuery):
     group_id = int(callback.data.split("_")[-1])
     group = await get_habit_group(callback.from_user.id, group_id)
     if not group:
-        await callback.answer("Папка не найдена", show_alert=True)
+        await callback.answer("Тема не найдена", show_alert=True)
         return
 
     habits = await get_user_habits(callback.from_user.id, group_id=group_id)
-    text = f"📁 <b>{group_name(group)}</b>"
+    text = f"🎯 <b>{group_name(group)}</b>"
     if not habits:
-        text += "\n\nПапка пустая. Добавь первую привычку."
+        text += "\n\nВ этой теме пока пусто. Добавь первую привычку."
     else:
         today = today_str()
         done = sum(1 for habit in habits if habit[5] == today)
@@ -1189,7 +1189,7 @@ async def open_group(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "add_group")
 async def new_group_start(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("Как назовём папку?", reply_markup=main_keyboard)
+    await callback.message.answer("Как назовём тему?", reply_markup=main_keyboard)
     await state.set_state(Form.waiting_group_name)
     await callback.answer()
 
@@ -1207,13 +1207,13 @@ async def new_group_name(message: types.Message, state: FSMContext):
     created, group_id = await create_habit_group(message.from_user.id, name)
     await state.clear()
     if not created:
-        await message.answer("Папка с таким названием уже есть.", reply_markup=main_keyboard)
+        await message.answer("Тема с таким названием уже есть.", reply_markup=main_keyboard)
         return
 
     if group_id:
         habits = await get_user_habits(message.from_user.id, group_id=group_id)
         await message.answer(
-            f"📁 <b>{escape(name)}</b>\n\nПапка создана. Добавь первую привычку.",
+            f"🎯 <b>{escape(name)}</b>\n\nТема создана. Добавь первую привычку.",
             parse_mode="HTML",
             reply_markup=group_keyboard(group_id, habits),
         )
@@ -1348,7 +1348,7 @@ async def habit_group_actions(callback: types.CallbackQuery):
         group_id = None if value == "none" else int(value)
         updated = await set_habit_group(callback.from_user.id, habit_id, group_id)
         if not updated:
-            await callback.answer("Не удалось изменить папку", show_alert=True)
+            await callback.answer("Не удалось изменить тему", show_alert=True)
             return
 
         item = await habit_diary(callback.from_user.id, habit_id, days=30)
@@ -1364,15 +1364,15 @@ async def habit_group_actions(callback: types.CallbackQuery):
                     habit_has_progress(item),
                 ),
             )
-        await callback.answer("Папка обновлена")
+        await callback.answer("Тема обновлена")
         return
 
     habit_id = int(callback.data.split("_")[-1])
     groups = await get_habit_groups(callback.from_user.id)
     await answer_or_edit(
         callback,
-        "📁 <b>Папка привычки</b>\n\n"
-        "Привычки в папках считаются отдельно и не влияют на общую статистику.",
+        "🎯 <b>Тема привычки</b>\n\n"
+        "Основные привычки идут в общую статистику. Темы считаются отдельно.",
         habit_group_picker(habit_id, groups),
     )
 
@@ -1382,7 +1382,7 @@ async def ask_delete_group(callback: types.CallbackQuery):
     group_id = int(callback.data.split("_")[-1])
     group = await get_habit_group(callback.from_user.id, group_id)
     if not group:
-        await callback.answer("Папка не найдена", show_alert=True)
+        await callback.answer("Тема не найдена", show_alert=True)
         return
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -1393,8 +1393,8 @@ async def ask_delete_group(callback: types.CallbackQuery):
     ])
     await answer_or_edit(
         callback,
-        f"🗑 Удалить папку <b>{group_name(group)}</b>?\n\n"
-        "Привычки не удалятся, а вернутся в раздел «Без папки».",
+        f"🗑 Удалить тему <b>{group_name(group)}</b>?\n\n"
+        "Привычки не удалятся, а вернутся в «Основные».",
         keyboard,
     )
 
@@ -1404,7 +1404,7 @@ async def delete_group(callback: types.CallbackQuery):
     group_id = int(callback.data.split("_")[-1])
     deleted = await delete_habit_group(callback.from_user.id, group_id)
     if not deleted:
-        await callback.answer("Папка не найдена", show_alert=True)
+        await callback.answer("Тема не найдена", show_alert=True)
         return
     await show_habits(callback, callback.from_user.id)
 
