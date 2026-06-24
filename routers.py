@@ -48,7 +48,7 @@ from db import (
 
 router = Router()
 logger = logging.getLogger(__name__)
-APP_VERSION = "2026.06.23.6"
+APP_VERSION = "2026.06.23.5"
 PROGRESS_UNIT_PRESETS = {
     "pages": "страниц",
     "minutes": "минут",
@@ -180,27 +180,6 @@ def format_progress_value(value: float | None, unit: str | None) -> str:
     number = f"{value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     safe_unit = escape(unit) if unit else ""
     return f"{number} {safe_unit}".strip()
-
-
-def format_progress_date(value: str | None) -> str:
-    if not value:
-        return "нет"
-    try:
-        return datetime.strptime(value, "%Y-%m-%d").strftime("%d.%m")
-    except ValueError:
-        return value
-
-
-def format_progress_change(progress: dict) -> str:
-    change = progress.get("change_percent")
-    previous = progress.get("previous_seven_days", 0)
-    unit = progress.get("unit")
-    if previous == 0:
-        return "прошлых данных пока нет"
-    if change == 0:
-        return "без изменений"
-    sign = "+" if change > 0 else ""
-    return f"{sign}{change}% к прошлым 7 дням ({format_progress_value(previous, unit)})"
 
 
 def completed_analysis_dates(dates: list[str]) -> list[str]:
@@ -372,14 +351,8 @@ def format_habit_diary_text(item: dict) -> str:
         progress_text = (
             "\n\n📏 <b>Прогресс</b>\n"
             f"Сегодня: <b>{format_progress_value(progress['today'], progress['unit'])}</b>\n"
-            f"7 дней: <b>{format_progress_value(progress['seven_days'], progress['unit'])}</b>"
-            f" · среднее: <b>{format_progress_value(progress['average_7'], progress['unit'])}</b>"
-            f" · дней: <b>{progress['days_recorded_7']}</b>\n"
+            f"7 дней: <b>{format_progress_value(progress['seven_days'], progress['unit'])}</b>\n"
             f"30 дней: <b>{format_progress_value(progress['thirty_days'], progress['unit'])}</b>"
-            f" · среднее: <b>{format_progress_value(progress['average_30'], progress['unit'])}</b>\n"
-            f"Лучший день: <b>{format_progress_value(progress['best_value'], progress['unit'])}</b>"
-            f" · {format_progress_date(progress['best_date'])}\n"
-            f"Сравнение: <b>{format_progress_change(progress)}</b>"
         )
     return (
         f"📖 <b>{habit_name(habit)}</b>\n\n"
@@ -868,18 +841,8 @@ async def open_habit_progress(callback: types.CallbackQuery, state: FSMContext):
             "Новое значение заменит его."
         )
 
-    summary = ""
-    if progress["days_recorded_30"]:
-        summary = (
-            "\n\n<b>Сейчас</b>\n"
-            f"7 дней: {format_progress_value(progress['seven_days'], progress['unit'])}"
-            f" · среднее {format_progress_value(progress['average_7'], progress['unit'])}\n"
-            f"Лучший день: {format_progress_value(progress['best_value'], progress['unit'])}"
-            f" · {format_progress_date(progress['best_date'])}"
-        )
-
     await callback.message.answer(
-        f"📏 <b>Результат за сегодня</b>\n\n{example}{current}{summary}",
+        f"📏 <b>Прогресс за сегодня</b>\n\n{example}{current}",
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
