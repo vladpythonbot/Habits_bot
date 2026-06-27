@@ -182,6 +182,12 @@ def format_progress_value(value: float | None, unit: str | None) -> str:
     return f"{number} {safe_unit}".strip()
 
 
+def format_progress_date(value: str | None) -> str:
+    if not value:
+        return "нет"
+    return datetime.strptime(value, "%Y-%m-%d").strftime("%d.%m")
+
+
 def completed_analysis_dates(dates: list[str]) -> list[str]:
     today = today_str()
     return [date for date in dates if date != today]
@@ -348,11 +354,17 @@ def format_habit_diary_text(item: dict) -> str:
     progress = item["progress"]
     progress_text = ""
     if progress and (progress["unit"] or progress["today"] is not None):
+        seven_avg = format_progress_value(progress["seven_avg"], progress["unit"])
+        thirty_avg = format_progress_value(progress["thirty_avg"], progress["unit"])
+        best_value = format_progress_value(progress["best_value"], progress["unit"])
+        best_date = format_progress_date(progress["best_date"])
         progress_text = (
             "\n\n📏 <b>Прогресс</b>\n"
             f"Сегодня: <b>{format_progress_value(progress['today'], progress['unit'])}</b>\n"
-            f"7 дней: <b>{format_progress_value(progress['seven_days'], progress['unit'])}</b>\n"
-            f"30 дней: <b>{format_progress_value(progress['thirty_days'], progress['unit'])}</b>"
+            f"Среднее за 7 дней: <b>{seven_avg}</b>\n"
+            f"Среднее за 30 дней: <b>{thirty_avg}</b>\n"
+            f"Лучший день: <b>{best_value}</b> · {best_date}\n"
+            f"Записей: <b>{progress['days_recorded']}</b>"
         )
     return (
         f"📖 <b>{habit_name(habit)}</b>\n\n"
@@ -1058,7 +1070,8 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
             if habit_tracks_progress(habit):
                 rows.append([
-                    InlineKeyboardButton(text=f"📏 {habit[1][:18]}", callback_data=f"progress_open_{habit_id}"),
+                    InlineKeyboardButton(text=f"✅ {habit[1][:16]}", callback_data=f"mark_{habit_id}"),
+                    InlineKeyboardButton(text="📏", callback_data=f"progress_open_{habit_id}"),
                 ])
             else:
                 rows.append([

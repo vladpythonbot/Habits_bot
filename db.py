@@ -421,11 +421,29 @@ async def get_habit_progress_summary(user_id: int, habit_id: int) -> dict | None
         rows = await cursor.fetchall()
 
     values = {progress_date: value for progress_date, value in rows}
+    seven_values = [value for date, value in values.items() if date in dates_7]
+    thirty_values = list(values.values())
+
+    def average(items: list[float]) -> float | None:
+        if not items:
+            return None
+        return sum(items) / len(items)
+
+    best_date = None
+    best_value = None
+    if values:
+        best_date, best_value = max(values.items(), key=lambda item: item[1])
+
     return {
         "unit": habit[0],
         "today": values.get(today),
-        "seven_days": sum(value for date, value in values.items() if date in dates_7),
-        "thirty_days": sum(values.values()),
+        "seven_avg": average(seven_values),
+        "thirty_avg": average(thirty_values),
+        "seven_total": sum(seven_values),
+        "thirty_total": sum(thirty_values),
+        "best_value": best_value,
+        "best_date": best_date,
+        "seven_days_recorded": len(seven_values),
         "days_recorded": len(values),
     }
 
