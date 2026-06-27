@@ -43,6 +43,7 @@ from db import (
     set_habit_reminder,
     today_str,
     unmark_habit_completed,
+    update_habit_group_emoji,
     update_habit_name,
 )
 
@@ -650,7 +651,11 @@ def stats_keyboard(groups=()) -> InlineKeyboardMarkup:
 def group_keyboard(group_id: int, habits) -> InlineKeyboardMarkup:
     rows = [
         [
-            InlineKeyboardButton(text="➕ Привычка", callback_data=f"add_habit_group_{group_id}"),
+            InlineKeyboardButton(text="➕ Новая", callback_data=f"add_habit_group_{group_id}"),
+            InlineKeyboardButton(text="📥 Из основных", callback_data=f"group_add_existing_{group_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="🎨 Эмодзи", callback_data=f"group_emoji_edit_{group_id}"),
             InlineKeyboardButton(text="🔵 Статистика", callback_data=f"group_stats_{group_id}"),
         ],
     ]
@@ -662,6 +667,19 @@ def group_keyboard(group_id: int, habits) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🗑 Удалить тему", callback_data=f"group_delete_ask_{group_id}")],
         [InlineKeyboardButton(text="🟣 Все привычки", callback_data="open_habits")],
     ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def group_existing_habits_keyboard(group_id: int, habits) -> InlineKeyboardMarkup:
+    rows = []
+    for habit in habits:
+        rows.append([
+            InlineKeyboardButton(
+                text=f"📥 {habit[1][:26]}",
+                callback_data=f"group_add_existing_pick_{group_id}_{habit[0]}",
+            ),
+        ])
+    rows.append([InlineKeyboardButton(text="🔵 Назад", callback_data=f"group_open_{group_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1243,6 +1261,52 @@ async def open_group(callback: types.CallbackQuery):
     await answer_or_edit(callback, text, group_keyboard(group_id, habits))
 
 
+@router.callback_query(F.data.startswith("group_add_existing_"))
+async def add_existing_habit_to_group(callback: types.CallbackQuery):
+    if callback.data.startswith("group_add_existing_pick_"):
+        parts = callback.data.split("_")
+        group_id = int(parts[-2])
+        habit_id = int(parts[-1])
+        updated = await set_habit_group(callback.from_user.id, habit_id, group_id)
+        if not updated:
+            await callback.answer("Не удалось добавить привычку", show_alert=True)
+            return
+
+        group = await get_habit_group(callback.from_user.id, group_id)
+        habits = await get_user_habits(callback.from_user.id, group_id=group_id)
+        text = f"<b>{group_title(group)}</b>\n\nПривычка добавлена в тему."
+        today = today_str()
+        done = sum(1 for habit in habits if habit[5] == today)
+        text += f"\n\nСегодня: <b>{done}/{len(habits)}</b>"
+        for habit in habits:
+            status = "🟢" if habit[5] == today else "⚪"
+            text += f"\n{status} <b>{habit_name(habit)}</b>"
+
+        await answer_or_edit(callback, text, group_keyboard(group_id, habits))
+        return
+
+    group_id = int(callback.data.split("_")[-1])
+    group = await get_habit_group(callback.from_user.id, group_id)
+    if not group:
+        await callback.answer("Тема не найдена", show_alert=True)
+        return
+
+    habits = await get_user_habits(callback.from_user.id, ungrouped_only=True)
+    if not habits:
+        await answer_or_edit(
+            callback,
+            f"<b>{group_title(group)}</b>\n\nВ основных привычках сейчас пусто. Можно создать новую привычку сразу в этой теме.",
+            group_keyboard(group_id, await get_user_habits(callback.from_user.id, group_id=group_id)),
+        )
+        return
+
+    await answer_or_edit(
+        callback,
+        f"<b>{group_title(group)}</b>\n\nВыбери привычку из «Основных», которую нужно добавить в эту тему.",
+        group_existing_habits_keyboard(group_id, habits),
+    )
+
+
 @router.callback_query(F.data == "add_group")
 async def new_group_start(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
@@ -1290,6 +1354,18 @@ async def finish_group_creation(user_id: int, name: str, emoji: str, state: FSMC
 async def choose_group_emoji(callback: types.CallbackQuery, state: FSMContext):
     emoji = normalize_group_emoji(callback.data.removeprefix("group_emoji_")) or "🎯"
     data = await state.get_data()
+    edit_group_id = data.get("edit_group_emoji_id")
+    if edit_group_id:
+        updated = await update_habit_group_emoji(callback.from_user.id, edit_group_id, emoji)
+        await state.clear()
+        if not updated:
+            await callback.answer("Не удалось изменить эмодзи", show_alert=True)
+            return
+        group = await get_habit_group(callback.from_user.id, edit_group_id)
+        habits = await get_user_habits(callback.from_user.id, group_id=edit_group_id)
+        await answer_or_edit(callback, f"<b>{group_title(group)}</b>\n\nЭмодзи обновлён.", group_keyboard(edit_group_id, habits))
+        return
+
     name = data.get("new_group_name")
     if not name:
         await state.clear()
@@ -1308,6 +1384,22 @@ async def new_group_emoji(message: types.Message, state: FSMContext):
         return
 
     data = await state.get_data()
+    edit_group_id = data.get("edit_group_emoji_id")
+    if edit_group_id:
+        updated = await update_habit_group_emoji(message.from_user.id, edit_group_id, emoji)
+        await state.clear()
+        if not updated:
+            await message.answer("Не удалось изменить эмодзи.", reply_markup=main_keyboard)
+            return
+        group = await get_habit_group(message.from_user.id, edit_group_id)
+        habits = await get_user_habits(message.from_user.id, group_id=edit_group_id)
+        await message.answer(
+            f"<b>{group_title(group)}</b>\n\nЭмодзи обновлён.",
+            parse_mode="HTML",
+            reply_markup=group_keyboard(edit_group_id, habits),
+        )
+        return
+
     name = data.get("new_group_name")
     if not name:
         await state.clear()
@@ -1315,6 +1407,24 @@ async def new_group_emoji(message: types.Message, state: FSMContext):
         return
 
     await finish_group_creation(message.from_user.id, name, emoji, state, message)
+
+
+@router.callback_query(F.data.startswith("group_emoji_edit_"))
+async def edit_group_emoji(callback: types.CallbackQuery, state: FSMContext):
+    group_id = int(callback.data.split("_")[-1])
+    group = await get_habit_group(callback.from_user.id, group_id)
+    if not group:
+        await callback.answer("Тема не найдена", show_alert=True)
+        return
+
+    await state.clear()
+    await state.update_data(edit_group_emoji_id=group_id)
+    await state.set_state(Form.waiting_group_emoji)
+    await answer_or_edit(
+        callback,
+        f"<b>{group_title(group)}</b>\n\nВыбери новый эмодзи или отправь свой.",
+        group_emoji_keyboard(),
+    )
 
 
 @router.callback_query(F.data == "add_habit")

@@ -227,6 +227,17 @@ async def set_habit_group(user_id: int, habit_id: int, group_id: int | None) -> 
         return cursor.rowcount > 0
 
 
+async def update_habit_group_emoji(user_id: int, group_id: int, emoji: str) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            UPDATE habit_groups
+            SET emoji = ?
+            WHERE id = ? AND user_id = ?
+        """, (emoji, group_id, user_id))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 async def delete_habit_group(user_id: int, group_id: int) -> bool:
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("""
