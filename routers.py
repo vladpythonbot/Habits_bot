@@ -68,6 +68,7 @@ class Form(StatesGroup):
     waiting_habit_name = State()
     waiting_habit_progress_unit = State()
     waiting_group_name = State()
+    waiting_group_emoji = State()
     waiting_new_name = State()
     waiting_habit_reminder_time = State()
     waiting_habit_progress = State()
@@ -100,6 +101,30 @@ def habit_tracks_progress(habit) -> bool:
 
 def group_name(group) -> str:
     return escape(group[1])
+
+
+def group_emoji(group) -> str:
+    if len(group) > 3 and group[3]:
+        return escape(group[3])
+    return "🎯"
+
+
+def group_title(group) -> str:
+    return f"{group_emoji(group)} {group_name(group)}"
+
+
+def normalize_group_emoji(value: str | None) -> str | None:
+    if not value:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    first = value.split()[0]
+    if len(first) > 8:
+        return None
+    if re.search(r"[A-Za-zА-Яа-яЁё0-9]", first):
+        return None
+    return first
 
 
 def daily_status(done: int, total: int) -> tuple[str, int]:
@@ -350,7 +375,7 @@ def format_habit_diary_text(item: dict) -> str:
         if reminder and reminder["enabled"]
         else "нет"
     )
-    group_text = group_name(item["group"]) if item["group"] else "Основные"
+    group_text = group_title(item["group"]) if item["group"] else "Основные"
     progress = item["progress"]
     progress_text = ""
     if progress and (progress["unit"] or progress["today"] is not None):
@@ -397,7 +422,7 @@ def compact_stats_text(
     )
     diff_text = f"{comparison['diff']:+d}%" if comparison["has_current"] and comparison["has_previous"] else "пока нет"
     lines = [
-        f"🔵 <b>{escape(title)}</b>",
+        f"🔵 <b>{title}</b>",
         "За 30 дней, сегодня не входит в проценты.",
         "",
         f"Сегодня: <b>{stats['today_done']}/{stats['habits_count']}</b>",
@@ -467,7 +492,7 @@ def habit_actions_keyboard(habits, groups) -> InlineKeyboardMarkup:
     for group in groups:
         rows.append([
             InlineKeyboardButton(
-                text=f"🎯 {group[1][:22]} · {group[2]}",
+                text=f"{group_emoji(group)} {group[1][:22]} · {group[2]}",
                 callback_data=f"group_open_{group[0]}",
             ),
         ])
@@ -496,6 +521,24 @@ def habit_type_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="✅ Просто да / нет", callback_data="habit_type_check"),
             InlineKeyboardButton(text="📏 С результатом", callback_data="habit_type_progress"),
         ],
+    ])
+
+
+def group_emoji_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🍳", callback_data="group_emoji_🍳"),
+            InlineKeyboardButton(text="💪", callback_data="group_emoji_💪"),
+            InlineKeyboardButton(text="📚", callback_data="group_emoji_📚"),
+            InlineKeyboardButton(text="🧘", callback_data="group_emoji_🧘"),
+        ],
+        [
+            InlineKeyboardButton(text="🥗", callback_data="group_emoji_🥗"),
+            InlineKeyboardButton(text="💧", callback_data="group_emoji_💧"),
+            InlineKeyboardButton(text="☀️", callback_data="group_emoji_☀️"),
+            InlineKeyboardButton(text="🌙", callback_data="group_emoji_🌙"),
+        ],
+        [InlineKeyboardButton(text="🎯 По умолчанию", callback_data="group_emoji_🎯")],
     ])
 
 
@@ -597,7 +640,7 @@ def stats_keyboard(groups=()) -> InlineKeyboardMarkup:
     for group in groups:
         rows.append([
             InlineKeyboardButton(
-                text=f"🎯 {group[1][:24]}",
+                text=f"{group_emoji(group)} {group[1][:24]}",
                 callback_data=f"group_stats_{group[0]}",
             ),
         ])
@@ -627,7 +670,7 @@ def habit_group_picker(habit_id: int, groups) -> InlineKeyboardMarkup:
     for group in groups:
         rows.append([
             InlineKeyboardButton(
-                text=f"🎯 {group[1][:24]}",
+                text=f"{group_emoji(group)} {group[1][:24]}",
                 callback_data=f"habit_group_set_{habit_id}_{group[0]}",
             ),
         ])
@@ -715,7 +758,7 @@ async def show_group_statistics(callback: types.CallbackQuery):
     comparison = week_comparison(stats)
     await answer_or_edit(
         callback,
-        compact_stats_text(stats, breakdown, comparison, group[1]),
+        compact_stats_text(stats, breakdown, comparison, group_title(group)),
         group_keyboard(group_id, stats["habits"]),
     )
 
@@ -746,7 +789,7 @@ async def show_habit_settings(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Привычка не найдена", show_alert=True)
         return
 
-    folder = group_name(item["group"]) if item["group"] else "Основные"
+    folder = group_title(item["group"]) if item["group"] else "Основные"
     reminder = item["reminder"]
     reminder_text = (
         ", ".join(parse_reminder_times(reminder["reminder_time"]))
@@ -1040,7 +1083,7 @@ async def open_today(callback: types.CallbackQuery):
 async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     habits = await get_user_habits(user_id)
     groups = await get_habit_groups(user_id)
-    group_map = {group[0]: group[1] for group in groups}
+    group_map = {group[0]: group for group in groups}
 
     if not habits:
         await answer_or_edit(
@@ -1066,7 +1109,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
         text += "\n\n<b>Сегодня не отмечено:</b>"
         for habit in unmarked:
             habit_id = habit[0]
-            folder = f"🎯 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
+            folder = f"{group_title(group_map[habit[7]])} · " if habit[7] in group_map else ""
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
             if habit_tracks_progress(habit):
                 rows.append([
@@ -1081,7 +1124,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     if completed:
         text += "\n\n<b>Выполнено:</b>"
         for habit in completed:
-            folder = f"🎯 {escape(group_map[habit[7]])} · " if habit[7] in group_map else ""
+            folder = f"{group_title(group_map[habit[7]])} · " if habit[7] in group_map else ""
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
             row = [
                 InlineKeyboardButton(
@@ -1172,7 +1215,7 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
         for group_id, group in group_map.items():
             group_habits = [habit for habit in habits if habit[7] == group_id]
             done = sum(1 for habit in group_habits if habit[5] == today_str())
-            text += f"\n\n🎯 <b>{group_name(group)}</b>\nСегодня: {done}/{len(group_habits)}"
+            text += f"\n\n<b>{group_title(group)}</b>\nСегодня: {done}/{len(group_habits)}"
 
     await answer_or_edit(obj, text, habit_actions_keyboard(habits, groups))
 
@@ -1186,7 +1229,7 @@ async def open_group(callback: types.CallbackQuery):
         return
 
     habits = await get_user_habits(callback.from_user.id, group_id=group_id)
-    text = f"🎯 <b>{group_name(group)}</b>"
+    text = f"<b>{group_title(group)}</b>"
     if not habits:
         text += "\n\nВ этой теме пока пусто. Добавь первую привычку."
     else:
@@ -1202,6 +1245,7 @@ async def open_group(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "add_group")
 async def new_group_start(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     await callback.message.answer("Как назовём тему?", reply_markup=main_keyboard)
     await state.set_state(Form.waiting_group_name)
     await callback.answer()
@@ -1209,7 +1253,7 @@ async def new_group_start(callback: types.CallbackQuery, state: FSMContext):
 
 @router.message(Form.waiting_group_name)
 async def new_group_name(message: types.Message, state: FSMContext):
-    name = message.text.strip()
+    name = (message.text or "").strip()
     if len(name) < 2:
         await message.answer("Название слишком короткое. Нужно хотя бы 2 символа.")
         return
@@ -1217,19 +1261,60 @@ async def new_group_name(message: types.Message, state: FSMContext):
         await message.answer("Давай короче: до 30 символов.")
         return
 
-    created, group_id = await create_habit_group(message.from_user.id, name)
+    await state.update_data(new_group_name=name)
+    await message.answer(
+        f"<b>{escape(name)}</b>\n\nВыбери эмодзи для темы или отправь свой.",
+        parse_mode="HTML",
+        reply_markup=group_emoji_keyboard(),
+    )
+    await state.set_state(Form.waiting_group_emoji)
+
+
+async def finish_group_creation(user_id: int, name: str, emoji: str, state: FSMContext, message: types.Message):
+    created, group_id = await create_habit_group(user_id, name, emoji)
     await state.clear()
     if not created:
         await message.answer("Тема с таким названием уже есть.", reply_markup=main_keyboard)
         return
 
     if group_id:
-        habits = await get_user_habits(message.from_user.id, group_id=group_id)
+        habits = await get_user_habits(user_id, group_id=group_id)
         await message.answer(
-            f"🎯 <b>{escape(name)}</b>\n\nТема создана. Добавь первую привычку.",
+            f"{escape(emoji)} <b>{escape(name)}</b>\n\nТема создана. Добавь первую привычку.",
             parse_mode="HTML",
             reply_markup=group_keyboard(group_id, habits),
         )
+
+
+@router.callback_query(Form.waiting_group_emoji, F.data.startswith("group_emoji_"))
+async def choose_group_emoji(callback: types.CallbackQuery, state: FSMContext):
+    emoji = normalize_group_emoji(callback.data.removeprefix("group_emoji_")) or "🎯"
+    data = await state.get_data()
+    name = data.get("new_group_name")
+    if not name:
+        await state.clear()
+        await callback.answer("Не нашёл название темы", show_alert=True)
+        return
+
+    await finish_group_creation(callback.from_user.id, name, emoji, state, callback.message)
+    await callback.answer()
+
+
+@router.message(Form.waiting_group_emoji)
+async def new_group_emoji(message: types.Message, state: FSMContext):
+    emoji = normalize_group_emoji(message.text)
+    if not emoji:
+        await message.answer("Отправь один эмодзи, например 🍳, 📚 или 💪.", reply_markup=group_emoji_keyboard())
+        return
+
+    data = await state.get_data()
+    name = data.get("new_group_name")
+    if not name:
+        await state.clear()
+        await message.answer("Не нашёл название темы. Создай её ещё раз.", reply_markup=main_keyboard)
+        return
+
+    await finish_group_creation(message.from_user.id, name, emoji, state, message)
 
 
 @router.callback_query(F.data == "add_habit")

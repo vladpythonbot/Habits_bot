@@ -51,6 +51,7 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
                 group_name TEXT NOT NULL,
+                emoji TEXT NOT NULL DEFAULT '🎯',
                 created_at TEXT NOT NULL,
                 UNIQUE(user_id, group_name)
             )
@@ -62,6 +63,11 @@ async def init_db():
             await db.execute("ALTER TABLE habits ADD COLUMN group_id INTEGER")
         if "progress_unit" not in habit_columns:
             await db.execute("ALTER TABLE habits ADD COLUMN progress_unit TEXT")
+
+        cursor = await db.execute("PRAGMA table_info(habit_groups)")
+        group_columns = {row[1] for row in await cursor.fetchall()}
+        if "emoji" not in group_columns:
+            await db.execute("ALTER TABLE habit_groups ADD COLUMN emoji TEXT NOT NULL DEFAULT '🎯'")
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS habit_logs (
@@ -164,13 +170,13 @@ async def get_user_habits(user_id: int, group_id: int | None = None, ungrouped_o
         return await cursor.fetchall()
 
 
-async def create_habit_group(user_id: int, group_name: str) -> tuple[bool, int | None]:
+async def create_habit_group(user_id: int, group_name: str, emoji: str = "🎯") -> tuple[bool, int | None]:
     async with aiosqlite.connect(DB_NAME) as db:
         try:
             cursor = await db.execute("""
-                INSERT INTO habit_groups (user_id, group_name, created_at)
-                VALUES (?, ?, ?)
-            """, (user_id, group_name, datetime.now().isoformat(timespec="seconds")))
+                INSERT INTO habit_groups (user_id, group_name, emoji, created_at)
+                VALUES (?, ?, ?, ?)
+            """, (user_id, group_name, emoji, datetime.now().isoformat(timespec="seconds")))
             await db.commit()
             return True, cursor.lastrowid
         except aiosqlite.IntegrityError:
@@ -180,12 +186,12 @@ async def create_habit_group(user_id: int, group_name: str) -> tuple[bool, int |
 async def get_habit_groups(user_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT g.id, g.group_name, COUNT(h.id)
+            SELECT g.id, g.group_name, COUNT(h.id), g.emoji
             FROM habit_groups AS g
             LEFT JOIN habits AS h
                 ON h.group_id = g.id AND h.user_id = g.user_id
             WHERE g.user_id = ?
-            GROUP BY g.id, g.group_name, g.created_at
+            GROUP BY g.id, g.group_name, g.emoji, g.created_at
             ORDER BY g.created_at ASC, g.id ASC
         """, (user_id,))
         return await cursor.fetchall()
@@ -194,7 +200,7 @@ async def get_habit_groups(user_id: int):
 async def get_habit_group(user_id: int, group_id: int):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT id, group_name
+            SELECT id, group_name, 0, emoji
             FROM habit_groups
             WHERE id = ? AND user_id = ?
         """, (group_id, user_id))
