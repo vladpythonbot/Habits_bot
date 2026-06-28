@@ -385,7 +385,7 @@ def format_habit_diary_text(item: dict) -> str:
         best_value = format_progress_value(progress["best_value"], progress["unit"])
         best_date = format_progress_date(progress["best_date"])
         progress_text = (
-            "\n\n📏 <b>Прогресс</b>\n"
+            "\n\n🔢 <b>Значения</b>\n"
             f"Сегодня: <b>{format_progress_value(progress['today'], progress['unit'])}</b>\n"
             f"Среднее за 7 дней: <b>{seven_avg}</b>\n"
             f"Среднее за 30 дней: <b>{thirty_avg}</b>\n"
@@ -410,6 +410,7 @@ def compact_stats_text(
     breakdown: list[dict],
     comparison: dict,
     title: str = "Статистика",
+    scope_note: str = "",
 ) -> str:
     current_text = (
         f"{comparison['current_done']}/{comparison['current_possible']} · {comparison['current_rate']}%"
@@ -424,7 +425,7 @@ def compact_stats_text(
     diff_text = f"{comparison['diff']:+d}%" if comparison["has_current"] and comparison["has_previous"] else "пока нет"
     lines = [
         f"🔵 <b>{title}</b>",
-        "За 30 дней, сегодня не входит в проценты.",
+        scope_note or "За 30 дней, сегодня не входит в проценты.",
         "",
         f"Сегодня: <b>{stats['today_done']}/{stats['habits_count']}</b>",
         f"30 дней: <b>{stats['period_completed']}/{stats['possible']} · {stats['completion_rate']}%</b>",
@@ -519,8 +520,8 @@ def reminder_button_text(reminder: dict | None) -> str:
 def habit_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Просто да / нет", callback_data="habit_type_check"),
-            InlineKeyboardButton(text="📏 С результатом", callback_data="habit_type_progress"),
+            InlineKeyboardButton(text="✅ Просто отметить", callback_data="habit_type_check"),
+            InlineKeyboardButton(text="🔢 Вводить число", callback_data="habit_type_progress"),
         ],
     ])
 
@@ -574,15 +575,20 @@ def habit_diary_keyboard(
             InlineKeyboardButton(text="↩️ Отменить выполнение", callback_data=f"undo_diary_{habit_id}"),
         ])
     elif not missed_today:
-        rows.append([
-            InlineKeyboardButton(text="✅ Выполнил", callback_data=f"mark_diary_{habit_id}"),
-            InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_diary_{habit_id}"),
-        ])
+        primary = (
+            InlineKeyboardButton(text="🔢 Ввести результат", callback_data=f"progress_open_{habit_id}")
+            if show_progress
+            else InlineKeyboardButton(text="✅ Выполнил", callback_data=f"mark_diary_{habit_id}")
+        )
+        rows.append([primary, InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_diary_{habit_id}")])
     elif missed_today:
-        rows.append([InlineKeyboardButton(text="✅ Всё-таки выполнил", callback_data=f"mark_diary_{habit_id}")])
+        primary = (
+            InlineKeyboardButton(text="🔢 Всё-таки ввести результат", callback_data=f"progress_open_{habit_id}")
+            if show_progress
+            else InlineKeyboardButton(text="✅ Всё-таки выполнил", callback_data=f"mark_diary_{habit_id}")
+        )
+        rows.append([primary])
     action_row = []
-    if show_progress:
-        action_row.append(InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit_id}"))
     action_row.append(InlineKeyboardButton(text="⚙️ Настройки", callback_data=f"habit_settings_{habit_id}"))
     rows.extend([
         action_row,
@@ -652,11 +658,8 @@ def group_keyboard(group_id: int, habits) -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(text="➕ Новая", callback_data=f"add_habit_group_{group_id}"),
-            InlineKeyboardButton(text="📥 Из основных", callback_data=f"group_add_existing_{group_id}"),
-        ],
-        [
-            InlineKeyboardButton(text="🎨 Эмодзи", callback_data=f"group_emoji_edit_{group_id}"),
-            InlineKeyboardButton(text="🔵 Статистика", callback_data=f"group_stats_{group_id}"),
+            InlineKeyboardButton(text="📥 Добавить", callback_data=f"group_add_existing_{group_id}"),
+            InlineKeyboardButton(text="⚙️ Тема", callback_data=f"group_settings_{group_id}"),
         ],
     ]
     for habit in habits:
@@ -664,10 +667,18 @@ def group_keyboard(group_id: int, habits) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=f"📖 {habit[1][:24]}", callback_data=f"habit_diary_{habit[0]}"),
         ])
     rows.extend([
-        [InlineKeyboardButton(text="🗑 Удалить тему", callback_data=f"group_delete_ask_{group_id}")],
         [InlineKeyboardButton(text="🟣 Все привычки", callback_data="open_habits")],
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def group_settings_keyboard(group_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔵 Статистика", callback_data=f"group_stats_{group_id}")],
+        [InlineKeyboardButton(text="🎨 Эмодзи", callback_data=f"group_emoji_edit_{group_id}")],
+        [InlineKeyboardButton(text="🗑 Удалить тему", callback_data=f"group_delete_ask_{group_id}")],
+        [InlineKeyboardButton(text="🔵 Назад", callback_data=f"group_open_{group_id}")],
+    ])
 
 
 def group_existing_habits_keyboard(group_id: int, habits) -> InlineKeyboardMarkup:
@@ -727,8 +738,8 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
 
     if stats["habits_count"] == 0:
         text = (
-            "🔵 <b>Общая статистика</b>\n\n"
-            "Здесь считаются только основные привычки."
+            "🔵 <b>Основные привычки</b>\n\n"
+            "Здесь считаются привычки без темы."
         )
         if groups:
             text += "\nТемы ниже считаются отдельно."
@@ -745,7 +756,13 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
     comparison = week_comparison(stats)
     await answer_or_edit(
         obj,
-        compact_stats_text(stats, breakdown, comparison, "Общая статистика"),
+        compact_stats_text(
+            stats,
+            breakdown,
+            comparison,
+            "Основные привычки",
+            "За 30 дней. Темы считаются отдельно кнопками ниже.",
+        ),
         stats_keyboard(groups),
     )
 
@@ -776,7 +793,13 @@ async def show_group_statistics(callback: types.CallbackQuery):
     comparison = week_comparison(stats)
     await answer_or_edit(
         callback,
-        compact_stats_text(stats, breakdown, comparison, group_title(group)),
+        compact_stats_text(
+            stats,
+            breakdown,
+            comparison,
+            f"Тема: {group_title(group)}",
+            "Статистика только этой темы. Сегодня не входит в проценты.",
+        ),
         group_keyboard(group_id, stats["habits"]),
     )
 
@@ -915,7 +938,7 @@ async def open_habit_progress(callback: types.CallbackQuery, state: FSMContext):
         )
 
     await callback.message.answer(
-        f"📏 <b>Прогресс за сегодня</b>\n\n{example}{current}",
+        f"🔢 <b>Значение за сегодня</b>\n\n{example}{current}",
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
@@ -1131,8 +1154,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
             text += f"\n• {folder}<b>{habit_name(habit)}</b>"
             if habit_tracks_progress(habit):
                 rows.append([
-                    InlineKeyboardButton(text=f"✅ {habit[1][:16]}", callback_data=f"mark_{habit_id}"),
-                    InlineKeyboardButton(text="📏", callback_data=f"progress_open_{habit_id}"),
+                    InlineKeyboardButton(text=f"🔢 {habit[1][:18]}", callback_data=f"progress_open_{habit_id}"),
                 ])
             else:
                 rows.append([
@@ -1151,7 +1173,10 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
                 ),
             ]
             if habit_tracks_progress(habit):
-                row.append(InlineKeyboardButton(text="📏 Результат", callback_data=f"progress_open_{habit[0]}"))
+                row[0] = InlineKeyboardButton(
+                    text=f"↩️ Отменить: {habit[1][:18]}",
+                    callback_data=f"undo_{habit[0]}",
+                )
             rows.append(row)
 
     rows.append([InlineKeyboardButton(text="➕ Добавить", callback_data="add_habit")])
@@ -1259,6 +1284,21 @@ async def open_group(callback: types.CallbackQuery):
             text += f"\n{status} <b>{habit_name(habit)}</b>"
 
     await answer_or_edit(callback, text, group_keyboard(group_id, habits))
+
+
+@router.callback_query(F.data.startswith("group_settings_"))
+async def open_group_settings(callback: types.CallbackQuery):
+    group_id = int(callback.data.split("_")[-1])
+    group = await get_habit_group(callback.from_user.id, group_id)
+    if not group:
+        await callback.answer("Тема не найдена", show_alert=True)
+        return
+
+    await answer_or_edit(
+        callback,
+        f"<b>{group_title(group)}</b>\n\nНастройки темы.",
+        group_settings_keyboard(group_id),
+    )
 
 
 @router.callback_query(F.data.startswith("group_add_existing_"))
@@ -1453,7 +1493,7 @@ async def new_habit_name(message: types.Message, state: FSMContext):
 
     await state.update_data(new_habit_name=name)
     await message.answer(
-        f"<b>{escape(name)}</b>\n\nЧто отслеживаем?",
+        f"<b>{escape(name)}</b>\n\nКак отмечать привычку?",
         parse_mode="HTML",
         reply_markup=habit_type_keyboard(),
     )
@@ -1484,7 +1524,7 @@ async def choose_habit_type(callback: types.CallbackQuery, state: FSMContext):
 
     if habit_type == "progress":
         await callback.message.answer(
-            "Что будем считать?\n\nВыбери кнопку или напиши своё: <b>страниц</b>, <b>минут</b>, <b>раз</b>.",
+            "Что вводить каждый день?\n\nВыбери кнопку или напиши своё: <b>страниц</b>, <b>минут</b>, <b>раз</b>.",
             parse_mode="HTML",
             reply_markup=progress_unit_keyboard(),
         )
@@ -1506,7 +1546,7 @@ async def create_progress_habit(
     await save_habit(user_id, name, group_id=group_id, progress_unit=unit)
     await state.clear()
     await message.answer(
-        f"🟢 Готово: <b>{escape(name)}</b>\nТеперь на сегодня вводи число в «{escape(unit)}».",
+        f"🟢 Готово: <b>{escape(name)}</b>\nТеперь ежедневная кнопка будет просить число в «{escape(unit)}».",
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
