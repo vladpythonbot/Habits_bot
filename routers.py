@@ -557,6 +557,12 @@ def progress_unit_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+def progress_today_keyboard(habit_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Без числа", callback_data=f"progress_skip_{habit_id}")],
+    ])
+
+
 def habit_has_progress(item: dict) -> bool:
     progress = item.get("progress")
     return bool(progress and progress.get("unit"))
@@ -938,18 +944,38 @@ async def open_habit_progress(callback: types.CallbackQuery, state: FSMContext):
         )
 
     await callback.message.answer(
-        f"🔢 <b>Значение за сегодня</b>\n\n{example}{current}",
+        f"🔢 <b>Значение за сегодня</b>\n\n{example}\n\n"
+        "Если сегодня просто сделал без числа — нажми <b>Без числа</b>."
+        f"{current}",
         parse_mode="HTML",
-        reply_markup=main_keyboard,
+        reply_markup=progress_today_keyboard(habit_id),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("progress_skip_"))
+async def skip_progress_value(callback: types.CallbackQuery, state: FSMContext):
+    habit_id = int(callback.data.split("_")[-1])
+    success, info = await mark_habit_completed(callback.from_user.id, habit_id)
+    await state.clear()
+
+    if not success:
+        await callback.answer("Уже отмечено сегодня", show_alert=True)
+        return
+
+    await callback.answer(f"Отмечено без числа: {info['habit_name']}")
+    await show_today(callback, callback.from_user.id)
 
 
 @router.message(Form.waiting_habit_progress)
 async def save_progress_message(message: types.Message, state: FSMContext):
     parsed = parse_progress_value(message.text or "")
     if not parsed:
-        await message.answer("Не понял значение. Напиши, например: <b>20 страниц</b> или <b>2,5 минуты</b>.", parse_mode="HTML")
+        await message.answer(
+            "Не понял значение. Напиши, например: <b>20 страниц</b> или <b>2,5 минуты</b>.\n"
+            "Если сделал без числа — нажми кнопку ниже.",
+            parse_mode="HTML",
+        )
         return
 
     amount, unit = parsed
