@@ -469,7 +469,7 @@ async def main_summary(user_id: int) -> str:
     if not habits:
         return (
             "🟣 <b>HabitFlow</b>\n"
-            "Пока привычек нет. Добавь первую — и начнём спокойно."
+            "Пока привычек нет. Добавь одно маленькое действие."
         )
 
     today = today_str()
@@ -520,8 +520,8 @@ def reminder_button_text(reminder: dict | None) -> str:
 def habit_type_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Просто отметить", callback_data="habit_type_check"),
-            InlineKeyboardButton(text="🔢 Вводить число", callback_data="habit_type_progress"),
+            InlineKeyboardButton(text="✅ Сделал / нет", callback_data="habit_type_check"),
+            InlineKeyboardButton(text="🔢 Число", callback_data="habit_type_progress"),
         ],
     ])
 
@@ -1474,7 +1474,14 @@ async def new_habit_start(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     if group_id is not None:
         await state.update_data(new_habit_group=group_id)
-    await callback.message.answer("Как назовём привычку?", reply_markup=main_keyboard)
+    await callback.message.answer(
+        "Напиши привычку как маленькое действие.\n\n"
+        "Не «читать книги», а <b>прочитать 1 страницу</b>.\n"
+        "Не «спорт», а <b>1 подход отжиманий</b>.\n"
+        "Не «питание», а <b>съесть завтрак</b>.",
+        parse_mode="HTML",
+        reply_markup=main_keyboard,
+    )
     await state.set_state(Form.waiting_habit_name)
     await callback.answer()
 
@@ -1493,7 +1500,8 @@ async def new_habit_name(message: types.Message, state: FSMContext):
 
     await state.update_data(new_habit_name=name)
     await message.answer(
-        f"<b>{escape(name)}</b>\n\nКак отмечать привычку?",
+        f"<b>{escape(name)}</b>\n\n"
+        "Сделай вход максимально простым: либо просто отмечаем факт, либо вводим одно число.",
         parse_mode="HTML",
         reply_markup=habit_type_keyboard(),
     )
@@ -1514,7 +1522,8 @@ async def choose_habit_type(callback: types.CallbackQuery, state: FSMContext):
         await save_habit(callback.from_user.id, name, group_id=group_id)
         await state.clear()
         await callback.message.answer(
-            f"🟢 Готово: <b>{escape(name)}</b>\nТеперь просто отмечай выполнение.",
+            f"🟢 Готово: <b>{escape(name)}</b>\n"
+            "Минимум уже понятен. Каждый день просто нажимай кнопку.",
             parse_mode="HTML",
             reply_markup=main_keyboard,
         )
@@ -1524,7 +1533,8 @@ async def choose_habit_type(callback: types.CallbackQuery, state: FSMContext):
 
     if habit_type == "progress":
         await callback.message.answer(
-            "Что вводить каждый день?\n\nВыбери кнопку или напиши своё: <b>страниц</b>, <b>минут</b>, <b>раз</b>.",
+            "Что вводить каждый день?\n\n"
+            "Одна единица, без сложной анкеты: <b>страниц</b>, <b>минут</b>, <b>раз</b>.",
             parse_mode="HTML",
             reply_markup=progress_unit_keyboard(),
         )
@@ -1546,7 +1556,8 @@ async def create_progress_habit(
     await save_habit(user_id, name, group_id=group_id, progress_unit=unit)
     await state.clear()
     await message.answer(
-        f"🟢 Готово: <b>{escape(name)}</b>\nТеперь ежедневная кнопка будет просить число в «{escape(unit)}».",
+        f"🟢 Готово: <b>{escape(name)}</b>\n"
+        f"Каждый день вводи одно число в «{escape(unit)}».",
         parse_mode="HTML",
         reply_markup=main_keyboard,
     )
