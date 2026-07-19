@@ -8,23 +8,23 @@
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f6f7fb;
+      --bg: #f5f8f4;
       --surface: #ffffff;
-      --surface-soft: #f1f4f8;
-      --text: #172033;
-      --muted: #697386;
-      --line: #dfe5ee;
-      --ink: #172033;
-      --blue: #3468db;
-      --blue-soft: #e9f0ff;
-      --green: #0b8f72;
-      --green-soft: #e4f5ef;
-      --amber: #b46a00;
-      --amber-soft: #fff1d8;
-      --rose: #c83d5a;
-      --rose-soft: #fde8ee;
-      --danger: #bd3448;
-      --shadow: 0 10px 26px rgba(29, 42, 68, .08);
+      --surface-soft: #eef5f0;
+      --text: #202124;
+      --muted: #66736c;
+      --line: #dbe8de;
+      --ink: #202124;
+      --mint: #0d9b72;
+      --mint-soft: #e5f5ed;
+      --sky: #407ee7;
+      --sky-soft: #e9f0ff;
+      --coral: #d85b55;
+      --coral-soft: #fde9e5;
+      --sun: #c38316;
+      --sun-soft: #fff2d8;
+      --danger: #bf3b4a;
+      --shadow: 0 12px 28px rgba(31, 59, 45, .08);
     }
 
     * { box-sizing: border-box; }
@@ -37,18 +37,22 @@
     }
 
     main {
-      width: min(920px, 100%);
+      width: min(900px, 100%);
       margin: 0 auto;
       padding: 16px 12px 28px;
     }
 
-    header {
+    header,
+    .section-head,
+    .item-top,
+    .habit-progress-head {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
-      margin-bottom: 12px;
     }
+
+    header { margin-bottom: 12px; }
 
     h1,
     h2,
@@ -59,7 +63,7 @@
     }
 
     h1 {
-      font-size: 26px;
+      font-size: 27px;
       line-height: 1.08;
     }
 
@@ -75,20 +79,25 @@
 
     .muted,
     .date,
-    .status {
+    .status,
+    .metric-label {
       color: var(--muted);
       font-size: 13px;
       line-height: 1.35;
     }
 
-    .pill {
-      min-height: 30px;
-      border: 1px solid var(--line);
+    .pill,
+    .chip,
+    .delta,
+    .status {
+      min-height: 28px;
       border-radius: 999px;
-      padding: 6px 10px;
+      padding: 5px 10px;
       background: var(--surface);
+      border: 1px solid var(--line);
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
+      font-weight: 700;
       white-space: nowrap;
     }
 
@@ -108,10 +117,10 @@
       border: 0;
       border-radius: 8px;
       padding: 0 12px;
-      background: var(--blue);
+      background: var(--mint);
       color: white;
       font: inherit;
-      font-weight: 650;
+      font-weight: 700;
       cursor: pointer;
     }
 
@@ -139,8 +148,9 @@
     }
 
     .panel,
-    .scorecard,
-    .habit-card {
+    .metric-card,
+    .habit-card,
+    .habit-stat-card {
       background: var(--surface);
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -148,40 +158,35 @@
     }
 
     .panel {
-      padding: 13px;
+      padding: 14px;
       margin-bottom: 12px;
     }
 
-    .dashboard-top {
+    .today-card {
       display: grid;
-      grid-template-columns: 1.15fr .85fr;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-
-    .overview {
-      display: grid;
-      grid-template-columns: 112px 1fr;
+      grid-template-columns: 128px 1fr;
+      gap: 16px;
       align-items: center;
-      gap: 14px;
-      min-height: 146px;
+      min-height: 170px;
+      background: var(--mint-soft);
+      border-color: #c8eadb;
     }
 
     .ring {
       --value: 0deg;
-      width: 104px;
+      width: 118px;
       aspect-ratio: 1;
       border-radius: 50%;
       display: grid;
       place-items: center;
-      background: conic-gradient(var(--blue) var(--value), #e5eaf2 0);
+      background: conic-gradient(var(--mint) var(--value), rgba(255, 255, 255, .72) 0);
       position: relative;
     }
 
     .ring::after {
       content: "";
       position: absolute;
-      inset: 10px;
+      inset: 11px;
       border-radius: 50%;
       background: var(--surface);
     }
@@ -189,71 +194,104 @@
     .ring b {
       position: relative;
       z-index: 1;
-      color: var(--blue);
-      font-size: 25px;
+      color: var(--mint);
+      font-size: 27px;
       line-height: 1;
     }
 
-    .overview-copy {
+    .today-copy {
       display: grid;
-      gap: 7px;
+      gap: 10px;
       min-width: 0;
     }
 
-    .overview-copy strong {
-      font-size: 18px;
-      line-height: 1.22;
+    .today-copy strong {
+      font-size: 22px;
+      line-height: 1.14;
       overflow-wrap: anywhere;
     }
 
-    .score-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+    .today-mini {
+      display: flex;
+      flex-wrap: wrap;
       gap: 8px;
     }
 
-    .scorecard {
-      min-height: 68px;
-      padding: 11px;
-      background: var(--surface-soft);
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
     }
 
-    .scorecard b {
+    .metric-card {
+      min-height: 78px;
+      padding: 12px;
+      display: grid;
+      align-content: center;
+      gap: 6px;
+    }
+
+    .metric-card b {
       display: block;
-      font-size: 22px;
+      font-size: 23px;
       line-height: 1.05;
       color: var(--ink);
+      overflow-wrap: anywhere;
     }
 
-    .scorecard span {
-      display: block;
-      margin-top: 6px;
+    .metric-card.mint { background: var(--mint-soft); }
+    .metric-card.mint b { color: var(--mint); }
+    .metric-card.sky { background: var(--sky-soft); }
+    .metric-card.sky b { color: var(--sky); }
+    .metric-card.sun { background: var(--sun-soft); }
+    .metric-card.sun b { color: var(--sun); }
+    .metric-card.coral { background: var(--coral-soft); }
+    .metric-card.coral b { color: var(--coral); }
+
+    .week-strip {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .week-day {
+      min-height: 70px;
+      display: grid;
+      place-items: center;
+      align-content: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
       color: var(--muted);
       font-size: 12px;
-      line-height: 1.25;
+      font-weight: 700;
     }
 
-    .scorecard.blue { background: var(--blue-soft); }
-    .scorecard.blue b { color: var(--blue); }
-    .scorecard.green { background: var(--green-soft); }
-    .scorecard.green b { color: var(--green); }
-    .scorecard.rose { background: var(--rose-soft); }
-    .scorecard.rose b { color: var(--rose); }
-    .scorecard.amber { background: var(--amber-soft); }
-    .scorecard.amber b { color: var(--amber); }
+    .week-dot {
+      width: 18px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: #d7e5da;
+    }
+
+    .week-dot.level-1 { background: #bfe9d4; }
+    .week-dot.level-2 { background: #70caa2; }
+    .week-dot.level-3 { background: var(--mint); }
 
     .insight-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
       margin-bottom: 12px;
     }
 
     .insight {
-      min-height: 112px;
       display: grid;
-      align-content: start;
       gap: 8px;
+      min-height: 104px;
+      align-content: start;
     }
 
     .insight strong {
@@ -262,79 +300,43 @@
       overflow-wrap: anywhere;
     }
 
-    .delta {
-      display: inline-flex;
-      align-items: center;
-      width: fit-content;
-      min-height: 24px;
-      border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 12px;
-      font-weight: 700;
-      background: var(--surface-soft);
-      color: var(--muted);
-    }
+    .delta.up { background: var(--mint-soft); color: var(--mint); border-color: #c8eadb; }
+    .delta.down { background: var(--coral-soft); color: var(--coral); border-color: #f5c9c3; }
+    .delta.flat { background: var(--sky-soft); color: var(--sky); border-color: #cddcff; }
 
-    .delta.up { background: var(--green-soft); color: var(--green); }
-    .delta.down { background: var(--rose-soft); color: var(--rose); }
-    .delta.flat { background: var(--blue-soft); color: var(--blue); }
-
-    .section-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+    .habit-stats {
+      display: grid;
       gap: 10px;
-      margin-bottom: 10px;
     }
 
-    .sheet-wrap {
-      overflow-x: auto;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface);
+    .habit-stat-card {
+      padding: 12px;
+      display: grid;
+      gap: 10px;
     }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 780px;
-      font-size: 13px;
+    .habit-progress-head {
+      align-items: flex-start;
     }
 
-    th,
-    td {
-      border-bottom: 1px solid var(--line);
-      padding: 10px;
-      text-align: left;
-      vertical-align: middle;
-      white-space: nowrap;
+    .habit-progress-title {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
     }
 
-    th {
-      position: sticky;
-      top: 0;
-      background: var(--surface-soft);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-    }
-
-    tr:last-child td {
-      border-bottom: 0;
-    }
-
-    .name-cell {
-      white-space: normal;
-      min-width: 180px;
-      font-weight: 650;
+    .habit-progress-title strong,
+    .habit-name {
+      font-size: 16px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
     }
 
     .rate-track {
-      width: 120px;
-      height: 8px;
+      width: 100%;
+      height: 9px;
       border-radius: 99px;
-      background: #e5eaf2;
+      background: #dbe8de;
       overflow: hidden;
     }
 
@@ -342,48 +344,31 @@
       height: 100%;
       width: var(--width);
       border-radius: inherit;
-      background: var(--blue);
+      background: var(--mint);
     }
 
-    .table-chip {
-      display: inline-flex;
-      align-items: center;
-      min-height: 24px;
-      border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 12px;
-      font-weight: 700;
-      background: var(--surface-soft);
-      color: var(--muted);
-    }
-
-    .table-chip.done {
-      background: var(--green-soft);
-      color: var(--green);
-    }
-
-    .table-chip.open {
-      background: var(--amber-soft);
-      color: var(--amber);
-    }
-
-    .heatmap {
+    .habit-meta {
       display: grid;
-      grid-template-columns: repeat(30, minmax(7px, 1fr));
-      gap: 4px;
-      align-items: center;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
     }
 
-    .day-cell {
-      aspect-ratio: 1;
-      min-width: 7px;
-      border-radius: 3px;
-      background: #e5eaf2;
+    .habit-meta span {
+      min-height: 48px;
+      border-radius: 8px;
+      background: var(--surface-soft);
+      padding: 8px;
+      display: grid;
+      gap: 2px;
+      color: var(--muted);
+      font-size: 12px;
     }
 
-    .day-cell.level-1 { background: #c9d8ff; }
-    .day-cell.level-2 { background: #7ca1f0; }
-    .day-cell.level-3 { background: var(--blue); }
+    .habit-meta b {
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.1;
+    }
 
     .form-panel {
       display: grid;
@@ -427,30 +412,22 @@
       padding: 12px;
     }
 
-    .item-top {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      align-items: flex-start;
-    }
-
     .item-title {
       display: grid;
       gap: 4px;
       min-width: 0;
     }
 
-    .habit-name {
-      font-size: 16px;
-      line-height: 1.3;
-      overflow-wrap: anywhere;
+    .status.done {
+      color: var(--mint);
+      background: var(--mint-soft);
+      border-color: #c8eadb;
     }
 
-    .status {
-      white-space: nowrap;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: var(--surface-soft);
+    .status.open {
+      color: var(--sun);
+      background: var(--sun-soft);
+      border-color: #efd29c;
     }
 
     .actions {
@@ -485,11 +462,12 @@
     .hidden { display: none; }
 
     @media (max-width: 680px) {
-      .dashboard-top { grid-template-columns: 1fr; }
-      .insight-grid { grid-template-columns: 1fr; }
-      .overview { grid-template-columns: 92px 1fr; }
-      .ring { width: 88px; }
-      .score-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .today-card { grid-template-columns: 96px 1fr; }
+      .ring { width: 92px; }
+      .metrics-row,
+      .insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .week-strip { gap: 5px; }
+      .habit-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .reminder-row { grid-template-columns: 44px 1fr; }
       .reminder-row button { grid-column: 1 / -1; }
       .status { white-space: normal; text-align: right; }
@@ -497,30 +475,32 @@
 
     @media (max-width: 420px) {
       main { padding-inline: 10px; }
-      .score-grid { grid-template-columns: 1fr 1fr; }
+      .metrics-row { grid-template-columns: 1fr 1fr; }
       .add-row { grid-template-columns: 1fr; }
+      .today-card { grid-template-columns: 1fr; }
     }
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #10141c;
-        --surface: #171d27;
-        --surface-soft: #202838;
-        --text: #f3f6fb;
-        --muted: #a8b3c5;
+        --bg: #11151f;
+        --surface: #181f2a;
+        --surface-soft: #222b39;
+        --text: #f5f3ee;
+        --muted: #b3aca3;
         --line: #30394a;
-        --ink: #f3f6fb;
-        --blue-soft: #172b55;
-        --green-soft: #123a32;
-        --rose-soft: #3a1d28;
-        --amber-soft: #382a12;
+        --ink: #f5f3ee;
+        --mint-soft: #14382e;
+        --sky-soft: #172b55;
+        --coral-soft: #3a2225;
+        --sun-soft: #3b2d16;
         --shadow: none;
       }
 
+      .today-card { border-color: #245543; }
       .ring::after { background: var(--surface); }
       .rate-track,
-      .day-cell { background: #283244; }
-      button.active { color: #151413; }
+      .week-dot { background: #344053; }
+      button.active { color: #11151f; }
     }
   </style>
 </head>
@@ -531,7 +511,7 @@
         <h1>HabitFlow</h1>
         <div class="date" id="today">Сегодня</div>
       </div>
-      <span class="pill">Analytics</span>
+      <span class="pill">Today</span>
     </header>
 
     <nav class="tabs">
@@ -540,33 +520,43 @@
     </nav>
 
     <section id="stats-view">
-      <div class="dashboard-top">
-        <div class="panel overview">
-          <div class="ring" id="ring"><b id="rate">0%</b></div>
-          <div class="overview-copy">
-            <strong id="summary-title">Пока собираем статистику</strong>
-            <p class="muted" id="summary-copy">Отмечай привычки в боте, а здесь смотри общую картину.</p>
+      <div class="panel today-card">
+        <div class="ring" id="ring"><b id="rate">0%</b></div>
+        <div class="today-copy">
+          <strong id="summary-title">Пока собираем статистику</strong>
+          <p class="muted" id="summary-copy">Сегодняшний прогресс появится после отметок.</p>
+          <div class="today-mini">
+            <span class="chip" id="today-score">0/0 сегодня</span>
+            <span class="chip" id="week-score">0% за 7 дней</span>
           </div>
         </div>
+      </div>
 
-        <div class="score-grid">
-          <div class="scorecard green">
-            <b id="today-score">0/0</b>
-            <span>сегодня</span>
-          </div>
-          <div class="scorecard blue">
-            <b id="week-score">0%</b>
-            <span>7 дней</span>
-          </div>
-          <div class="scorecard amber">
-            <b id="perfect-score">0</b>
-            <span>идеальных дней</span>
-          </div>
-          <div class="scorecard rose">
-            <b id="trend-score">0</b>
-            <span>тренд недели</span>
-          </div>
+      <div class="metrics-row">
+        <div class="metric-card mint">
+          <b id="streak-score">0</b>
+          <span class="metric-label">лучшая серия</span>
         </div>
+        <div class="metric-card sky">
+          <b id="month-score">0%</b>
+          <span class="metric-label">30 дней</span>
+        </div>
+        <div class="metric-card sun">
+          <b id="perfect-score">0</b>
+          <span class="metric-label">идеальных дней</span>
+        </div>
+        <div class="metric-card coral">
+          <b id="trend-score">0%</b>
+          <span class="metric-label">тренд</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-head">
+          <h2>Неделя</h2>
+          <span class="muted" id="best-day">Лучший день: -</span>
+        </div>
+        <div class="week-strip" id="week-strip"></div>
       </div>
 
       <div class="insight-grid">
@@ -585,39 +575,19 @@
           <strong id="active-days">0 дней</strong>
           <span class="delta flat" id="trend-badge">0%</span>
         </div>
-      </div>
-
-      <div class="panel">
-        <div class="section-head">
-          <h2>30-дневная сетка</h2>
-          <span class="muted" id="best-day">Лучший день: -</span>
+        <div class="panel insight">
+          <span class="muted">Средняя серия</span>
+          <strong id="average-streak">0</strong>
+          <p class="muted">по всем привычкам</p>
         </div>
-        <div class="heatmap" id="heatmap"></div>
       </div>
 
       <div class="panel">
         <div class="section-head">
-          <h2>Таблица привычек</h2>
+          <h2>Привычки</h2>
           <span class="muted">30 дней</span>
         </div>
-        <div class="sheet-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Привычка</th>
-                <th>Rate</th>
-                <th>7 days</th>
-                <th>30 days</th>
-                <th>Streak</th>
-                <th>Missed</th>
-                <th>Total</th>
-                <th>Today</th>
-                <th>Last</th>
-              </tr>
-            </thead>
-            <tbody id="habit-table"></tbody>
-          </table>
-        </div>
+        <div class="habit-stats" id="habit-stats"></div>
       </div>
     </section>
 
@@ -708,8 +678,13 @@
       return "delta flat";
     }
 
+    function dayLabel(date) {
+      return date.slice(5).replace("-", ".");
+    }
+
     function renderStats(stats) {
-      const rate = Math.max(0, Math.min(100, stats.completion_rate));
+      const rate = Math.max(0, Math.min(100, stats.today_rate || 0));
+      const monthRate = Math.max(0, Math.min(100, stats.completion_rate || 0));
       const trend = stats.trend || 0;
       const dailyValues = Object.values(stats.daily_done);
       const max = Math.max(1, ...dailyValues);
@@ -721,15 +696,17 @@
       document.querySelector("#today").textContent = stats.today;
       document.querySelector("#rate").textContent = `${rate}%`;
       document.querySelector("#ring").style.setProperty("--value", `${Math.round(rate * 3.6)}deg`);
-      document.querySelector("#today-score").textContent = `${stats.today_done}/${stats.habits_count}`;
-      document.querySelector("#week-score").textContent = `${stats.week_rate || 0}%`;
+      document.querySelector("#today-score").textContent = `${stats.today_done}/${stats.habits_count} сегодня`;
+      document.querySelector("#week-score").textContent = `${stats.week_rate || 0}% за 7 дней`;
+      document.querySelector("#streak-score").textContent = stats.best_streak || 0;
+      document.querySelector("#month-score").textContent = `${monthRate}%`;
       document.querySelector("#perfect-score").textContent = stats.perfect_days || 0;
       document.querySelector("#trend-score").textContent = trendLabel(trend);
       document.querySelector("#best-day").textContent = best.value ? `Лучший день: ${best.date} · ${best.value}` : "Лучший день: -";
 
-      const title = rate >= 80 ? "Ритм держится уверенно" : rate >= 45 ? "Ритм рабочий" : "Ритм нужно укрепить";
+      const title = rate >= 100 ? "Сегодня закрыто" : rate >= 50 ? "День в процессе" : "Сегодня нужен старт";
       const copy = stats.habits_count
-        ? `30 дней: ${stats.period_completed}/${stats.possible}. Неделя: ${stats.week_completed}/${stats.week_possible}.`
+        ? `Отмечено ${stats.today_done} из ${stats.habits_count}. За 30 дней общий ритм ${monthRate}%.`
         : "Добавь привычку во вкладке управления, а отметки делай в боте.";
       document.querySelector("#summary-title").textContent = title;
       document.querySelector("#summary-copy").textContent = copy;
@@ -745,32 +722,42 @@
         ? `${focusHabit.completion_rate}% за 30 дней · пропусков ${focusHabit.missed_count}`
         : "Пока нечего улучшать.";
       document.querySelector("#active-days").textContent = `${stats.active_days || 0} из 29 дней`;
+      document.querySelector("#average-streak").textContent = stats.average_streak || 0;
       const trendBadge = document.querySelector("#trend-badge");
       trendBadge.textContent = `${trendLabel(trend)} к прошлой неделе`;
       trendBadge.className = trendClass(trend);
 
-      document.querySelector("#heatmap").innerHTML = stats.dates.map((date) => {
+      document.querySelector("#week-strip").innerHTML = stats.dates.slice(-8, -1).map((date) => {
         const value = stats.daily_done[date] || 0;
-        return `<div class="day-cell level-${level(value, max)}" title="${date}: ${value}"></div>`;
+        const possible = stats.daily_possible?.[date] || 0;
+        return `
+          <div class="week-day" title="${date}: ${value}/${possible}">
+            <span>${dayLabel(date)}</span>
+            <i class="week-dot level-${level(value, max)}"></i>
+            <span>${value}/${possible}</span>
+          </div>
+        `;
       }).join("");
 
       const rows = stats.habit_rows || [];
-      document.querySelector("#habit-table").innerHTML = rows.length ? rows.map((habit) => `
-        <tr>
-          <td class="name-cell">${escapeHtml(habit.name)}</td>
-          <td>
-            <div class="rate-track"><div class="rate-fill" style="--width:${habit.completion_rate}%"></div></div>
-            <span class="muted">${habit.completion_rate}%</span>
-          </td>
-          <td>${habit.last_7_completed}/${habit.last_7_possible}</td>
-          <td>${habit.period_completed}/${habit.possible}</td>
-          <td>${habit.streak}</td>
-          <td>${habit.missed_count}</td>
-          <td>${habit.total_completed}</td>
-          <td><span class="table-chip ${habit.done_today ? "done" : "open"}">${habit.done_today ? "да" : "нет"}</span></td>
-          <td>${habit.last_completed_date || "-"}</td>
-        </tr>
-      `).join("") : '<tr><td colspan="9" class="muted">Нет привычек для анализа.</td></tr>';
+      document.querySelector("#habit-stats").innerHTML = rows.length ? rows.map((habit) => `
+        <article class="habit-stat-card">
+          <div class="habit-progress-head">
+            <div class="habit-progress-title">
+              <strong>${escapeHtml(habit.name)}</strong>
+              <span class="muted">${habit.period_completed}/${habit.possible} за 30 дней</span>
+            </div>
+            <span class="status ${habit.done_today ? "done" : "open"}">${habit.done_today ? "готово" : "сегодня"}</span>
+          </div>
+          <div class="rate-track"><div class="rate-fill" style="--width:${habit.completion_rate}%"></div></div>
+          <div class="habit-meta">
+            <span><b>${habit.completion_rate}%</b>ритм</span>
+            <span><b>${habit.streak}</b>серия</span>
+            <span><b>${habit.last_7_completed}/${habit.last_7_possible}</b>7 дней</span>
+            <span><b>${habit.missed_count}</b>пропусков</span>
+          </div>
+        </article>
+      `).join("") : '<div class="empty">Нет привычек для анализа.</div>';
     }
 
     function renderManage(data) {
@@ -788,7 +775,7 @@
                 <h2 class="habit-name">${escapeHtml(habit.name)}</h2>
                 <p class="muted">Серия: ${habit.streak} · всего: ${habit.total_completed} · ${reminderText}</p>
               </div>
-              <span class="status">${habit.done_today ? "сегодня отмечено" : "ждёт отметки"}</span>
+              <span class="status ${habit.done_today ? "done" : "open"}">${habit.done_today ? "сегодня отмечено" : "ждёт отметки"}</span>
             </div>
             <div class="actions">
               <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Переименовать</button>

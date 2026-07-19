@@ -311,6 +311,9 @@ async def api_stats(request: web.Request) -> web.Response:
         for date in completed_dates
         if daily_possible.get(date, 0) > 0 and daily_done.get(date, 0) >= daily_possible.get(date, 0)
     )
+    today_rate = round(daily_done.get(today, 0) / len(habits) * 100) if habits else 0
+    best_streak = max((habit[3] for habit in habits), default=0)
+    average_streak = round(sum(habit[3] for habit in habits) / len(habits), 1) if habits else 0
     best_habit = habit_rows[0] if habit_rows else None
     focus_habit = min(
         (habit for habit in habit_rows if habit["possible"] > 0),
@@ -327,6 +330,7 @@ async def api_stats(request: web.Request) -> web.Response:
         "completion_rate": completion_rate,
         "missed_days": len(missed_today),
         "today_done": daily_done.get(today, 0),
+        "today_rate": today_rate,
         "dates": dates,
         "daily_done": daily_done,
         "daily_possible": daily_possible,
@@ -337,6 +341,8 @@ async def api_stats(request: web.Request) -> web.Response:
         "trend": trend,
         "active_days": active_days,
         "perfect_days": perfect_days,
+        "best_streak": best_streak,
+        "average_streak": average_streak,
         "best_habit": best_habit,
         "focus_habit": focus_habit,
         "habit_rows": habit_rows,
