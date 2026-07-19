@@ -73,22 +73,16 @@ class Form(StatesGroup):
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🟢 Сегодня")],
-        *([[KeyboardButton(text="📱 Mini App", web_app=WebAppInfo(url=MINI_APP_URL))]] if MINI_APP_URL else []),
+        [
+            KeyboardButton(text="🟢 Сегодня"),
+            *([KeyboardButton(text="📱 Mini App", web_app=WebAppInfo(url=MINI_APP_URL))] if MINI_APP_URL else []),
+        ],
         [KeyboardButton(text="🟣 Привычки"), KeyboardButton(text="🔵 Статистика")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
     is_persistent=True,
 )
-
-
-def mini_app_keyboard() -> InlineKeyboardMarkup | None:
-    if not MINI_APP_URL:
-        return None
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="📱 Открыть Mini App", web_app=WebAppInfo(url=MINI_APP_URL)),
-    ]])
 
 
 def progress_bar(percent: int, width: int = 10) -> str:
@@ -631,8 +625,6 @@ def habit_group_picker(habit_id: int, groups) -> InlineKeyboardMarkup:
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("Меню всегда под рукой.", reply_markup=main_keyboard)
-    if MINI_APP_URL:
-        await message.answer("Mini App лучше открывать этой кнопкой:", reply_markup=mini_app_keyboard())
     await show_today(message, message.from_user.id)
 
 
@@ -640,11 +632,10 @@ async def start(message: types.Message, state: FSMContext):
 @router.message(F.text.in_(["📱 Mini App", "Mini App"]))
 async def open_mini_app(message: types.Message, state: FSMContext):
     await state.clear()
-    keyboard = mini_app_keyboard()
-    if not keyboard:
+    if not MINI_APP_URL:
         await message.answer("Mini App пока не настроен.", reply_markup=main_keyboard)
         return
-    await message.answer("Открой Mini App этой кнопкой:", reply_markup=keyboard)
+    await message.answer("Mini App теперь сбоку в клавиатуре.", reply_markup=main_keyboard)
 
 
 @router.message(Command("version"))
