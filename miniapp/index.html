@@ -190,13 +190,17 @@
     const input = document.querySelector("#habit-name");
 
     async function request(path, options = {}) {
+      const method = options.method || "POST";
+      const payload = options.body ? JSON.parse(options.body) : {};
       const response = await fetch(path, {
         ...options,
+        method,
         headers: {
           "Content-Type": "application/json",
           "X-Telegram-Init-Data": initData,
           ...(options.headers || {}),
         },
+        body: JSON.stringify({ _auth: initData, ...payload }),
       });
       if (!response.ok) throw new Error(await response.text());
       return response.json();
@@ -247,7 +251,8 @@
       try {
         render(await request("/api/state"));
       } catch (error) {
-        list.innerHTML = '<div class="error">Открой Mini App из Telegram.</div>';
+        const details = initData ? "Не удалось проверить вход Telegram." : "Telegram не передал данные входа.";
+        list.innerHTML = `<div class="error">${details}</div>`;
       }
     }
 

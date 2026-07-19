@@ -71,8 +71,27 @@ def habit_payload(habit, missed_ids: set[int]) -> dict:
 
 
 async def get_telegram_user(request: web.Request) -> dict:
-    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    payload = await get_json_payload(request)
+    init_data = (
+        request.headers.get("X-Telegram-Init-Data")
+        or request.query.get("initData")
+        or payload.get("_auth")
+        or ""
+    )
     return verify_init_data(init_data)
+
+
+async def get_json_payload(request: web.Request) -> dict:
+    if request.method not in {"POST", "PUT", "PATCH"}:
+        return {}
+    if "json_payload" in request:
+        return request["json_payload"]
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        payload = {}
+    request["json_payload"] = payload if isinstance(payload, dict) else {}
+    return request["json_payload"]
 
 
 async def index(_: web.Request) -> web.FileResponse:
@@ -101,7 +120,7 @@ async def api_state(request: web.Request) -> web.Response:
 
 async def api_add_habit(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
-    payload = await request.json()
+    payload = await get_json_payload(request)
     name = str(payload.get("name", "")).strip()
     if not name:
         raise web.HTTPBadRequest(text="Habit name is required")
@@ -140,6 +159,7 @@ def create_web_app() -> web.Application:
     app.router.add_get("/", index)
     app.router.add_get("/miniapp", index)
     app.router.add_get("/api/state", api_state)
+    app.router.add_post("/api/state", api_state)
     app.router.add_post("/api/habits", api_add_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/mark", api_mark)
     app.router.add_post("/api/habits/{habit_id:\\d+}/miss", api_miss)
