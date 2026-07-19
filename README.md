@@ -51,7 +51,8 @@ PORT=8080
 ```
 
 `DB_PATH` is optional. If it is not set, the bot creates `habits.db` in the project folder.
-`MINI_APP_URL` must be an HTTPS URL. If it is not set, the Mini App button is hidden.
+`MINI_APP_URL` must be an HTTPS URL. On Railway, the bot can use `RAILWAY_PUBLIC_DOMAIN` automatically.
+If neither value is available, the Mini App button is hidden.
 `PORT` is optional locally and is usually provided automatically by hosting platforms.
 
 ## Run Locally
