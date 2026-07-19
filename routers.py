@@ -15,7 +15,6 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
-    WebAppInfo,
 )
 
 from bot import bot
@@ -73,10 +72,7 @@ class Form(StatesGroup):
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [
-            KeyboardButton(text="🟢 Сегодня"),
-            *([KeyboardButton(text="📱 Mini App", web_app=WebAppInfo(url=MINI_APP_URL))] if MINI_APP_URL else []),
-        ],
+        [KeyboardButton(text="🟢 Сегодня")],
         [KeyboardButton(text="🟣 Привычки"), KeyboardButton(text="🔵 Статистика")],
     ],
     resize_keyboard=True,
@@ -629,13 +625,12 @@ async def start(message: types.Message, state: FSMContext):
 
 
 @router.message(Command("app"))
-@router.message(F.text.in_(["📱 Mini App", "Mini App"]))
 async def open_mini_app(message: types.Message, state: FSMContext):
     await state.clear()
     if not MINI_APP_URL:
         await message.answer("Mini App пока не настроен.", reply_markup=main_keyboard)
         return
-    await message.answer("Mini App теперь сбоку в клавиатуре.", reply_markup=main_keyboard)
+    await message.answer("Mini App теперь в кнопке меню рядом с полем ввода.", reply_markup=main_keyboard)
 
 
 @router.message(Command("version"))
