@@ -1019,7 +1019,7 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
     if not habits:
         text = "🟣 <b>Дневник привычек</b>\n\nСписок пуст. Начнём с одной."
     else:
-        text = "🟣 <b>Дневник привычек</b>\n\nСписок плоский. Папки убраны."
+        text = "🟣 <b>Дневник привычек</b>"
         for habit in habits:
             _, _, _, _, total_completed, last_date, _, _, *_ = habit
             done_today = " 🟢" if last_date == today_str() else ""
