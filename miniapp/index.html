@@ -8,21 +8,23 @@
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f4f2f0;
+      --bg: #f6f7fb;
       --surface: #ffffff;
-      --surface-soft: #faf8f6;
-      --text: #1c1c1f;
-      --muted: #6f6a70;
-      --line: #e2ddd8;
-      --ink: #2a2b2f;
-      --rose: #c6537d;
-      --rose-soft: #f7e8ef;
-      --teal: #157f71;
-      --teal-soft: #e5f4f1;
-      --amber: #ad7617;
-      --amber-soft: #f7eedf;
-      --danger: #b8424b;
-      --shadow: 0 8px 22px rgba(31, 28, 26, .08);
+      --surface-soft: #f1f4f8;
+      --text: #172033;
+      --muted: #697386;
+      --line: #dfe5ee;
+      --ink: #172033;
+      --blue: #3468db;
+      --blue-soft: #e9f0ff;
+      --green: #0b8f72;
+      --green-soft: #e4f5ef;
+      --amber: #b46a00;
+      --amber-soft: #fff1d8;
+      --rose: #c83d5a;
+      --rose-soft: #fde8ee;
+      --danger: #bd3448;
+      --shadow: 0 10px 26px rgba(29, 42, 68, .08);
     }
 
     * { box-sizing: border-box; }
@@ -106,7 +108,7 @@
       border: 0;
       border-radius: 8px;
       padding: 0 12px;
-      background: var(--ink);
+      background: var(--blue);
       color: white;
       font: inherit;
       font-weight: 650;
@@ -172,7 +174,7 @@
       border-radius: 50%;
       display: grid;
       place-items: center;
-      background: conic-gradient(var(--teal) var(--value), #eee7e2 0);
+      background: conic-gradient(var(--blue) var(--value), #e5eaf2 0);
       position: relative;
     }
 
@@ -187,7 +189,7 @@
     .ring b {
       position: relative;
       z-index: 1;
-      color: var(--teal);
+      color: var(--blue);
       font-size: 25px;
       line-height: 1;
     }
@@ -231,12 +233,51 @@
       line-height: 1.25;
     }
 
-    .scorecard.teal { background: var(--teal-soft); }
-    .scorecard.teal b { color: var(--teal); }
+    .scorecard.blue { background: var(--blue-soft); }
+    .scorecard.blue b { color: var(--blue); }
+    .scorecard.green { background: var(--green-soft); }
+    .scorecard.green b { color: var(--green); }
     .scorecard.rose { background: var(--rose-soft); }
     .scorecard.rose b { color: var(--rose); }
     .scorecard.amber { background: var(--amber-soft); }
     .scorecard.amber b { color: var(--amber); }
+
+    .insight-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .insight {
+      min-height: 112px;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+    }
+
+    .insight strong {
+      font-size: 20px;
+      line-height: 1.12;
+      overflow-wrap: anywhere;
+    }
+
+    .delta {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--surface-soft);
+      color: var(--muted);
+    }
+
+    .delta.up { background: var(--green-soft); color: var(--green); }
+    .delta.down { background: var(--rose-soft); color: var(--rose); }
+    .delta.flat { background: var(--blue-soft); color: var(--blue); }
 
     .section-head {
       display: flex;
@@ -256,7 +297,7 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      min-width: 680px;
+      min-width: 780px;
       font-size: 13px;
     }
 
@@ -293,7 +334,7 @@
       width: 120px;
       height: 8px;
       border-radius: 99px;
-      background: #eee7e2;
+      background: #e5eaf2;
       overflow: hidden;
     }
 
@@ -301,7 +342,29 @@
       height: 100%;
       width: var(--width);
       border-radius: inherit;
-      background: var(--teal);
+      background: var(--blue);
+    }
+
+    .table-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--surface-soft);
+      color: var(--muted);
+    }
+
+    .table-chip.done {
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .table-chip.open {
+      background: var(--amber-soft);
+      color: var(--amber);
     }
 
     .heatmap {
@@ -315,12 +378,12 @@
       aspect-ratio: 1;
       min-width: 7px;
       border-radius: 3px;
-      background: #eee7e2;
+      background: #e5eaf2;
     }
 
-    .day-cell.level-1 { background: #cfe9e4; }
-    .day-cell.level-2 { background: #81c7bb; }
-    .day-cell.level-3 { background: var(--teal); }
+    .day-cell.level-1 { background: #c9d8ff; }
+    .day-cell.level-2 { background: #7ca1f0; }
+    .day-cell.level-3 { background: var(--blue); }
 
     .form-panel {
       display: grid;
@@ -423,6 +486,7 @@
 
     @media (max-width: 680px) {
       .dashboard-top { grid-template-columns: 1fr; }
+      .insight-grid { grid-template-columns: 1fr; }
       .overview { grid-template-columns: 92px 1fr; }
       .ring { width: 88px; }
       .score-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -439,22 +503,23 @@
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #151413;
-        --surface: #211f1e;
-        --surface-soft: #2a2726;
-        --text: #f5f2ef;
-        --muted: #bdb4ae;
-        --line: #3b3632;
-        --ink: #f5f2ef;
-        --rose-soft: #3a2630;
-        --teal-soft: #173630;
-        --amber-soft: #392d18;
+        --bg: #10141c;
+        --surface: #171d27;
+        --surface-soft: #202838;
+        --text: #f3f6fb;
+        --muted: #a8b3c5;
+        --line: #30394a;
+        --ink: #f3f6fb;
+        --blue-soft: #172b55;
+        --green-soft: #123a32;
+        --rose-soft: #3a1d28;
+        --amber-soft: #382a12;
         --shadow: none;
       }
 
       .ring::after { background: var(--surface); }
       .rate-track,
-      .day-cell { background: #3a3632; }
+      .day-cell { background: #283244; }
       button.active { color: #151413; }
     }
   </style>
@@ -466,7 +531,7 @@
         <h1>HabitFlow</h1>
         <div class="date" id="today">Сегодня</div>
       </div>
-      <span class="pill">Dashboard</span>
+      <span class="pill">Analytics</span>
     </header>
 
     <nav class="tabs">
@@ -485,22 +550,40 @@
         </div>
 
         <div class="score-grid">
-          <div class="scorecard teal">
+          <div class="scorecard green">
             <b id="today-score">0/0</b>
             <span>сегодня</span>
           </div>
-          <div class="scorecard rose">
-            <b id="period-score">0/0</b>
-            <span>30 дней</span>
+          <div class="scorecard blue">
+            <b id="week-score">0%</b>
+            <span>7 дней</span>
           </div>
           <div class="scorecard amber">
-            <b id="habit-count">0</b>
-            <span>привычек</span>
+            <b id="perfect-score">0</b>
+            <span>идеальных дней</span>
           </div>
-          <div class="scorecard">
-            <b id="missed">0</b>
-            <span>не сегодня</span>
+          <div class="scorecard rose">
+            <b id="trend-score">0</b>
+            <span>тренд недели</span>
           </div>
+        </div>
+      </div>
+
+      <div class="insight-grid">
+        <div class="panel insight">
+          <span class="muted">Лучший ритм</span>
+          <strong id="best-habit">-</strong>
+          <p class="muted" id="best-habit-copy">Нет данных</p>
+        </div>
+        <div class="panel insight">
+          <span class="muted">Фокус</span>
+          <strong id="focus-habit">-</strong>
+          <p class="muted" id="focus-habit-copy">Нет данных</p>
+        </div>
+        <div class="panel insight">
+          <span class="muted">Активность</span>
+          <strong id="active-days">0 дней</strong>
+          <span class="delta flat" id="trend-badge">0%</span>
         </div>
       </div>
 
@@ -523,8 +606,10 @@
               <tr>
                 <th>Привычка</th>
                 <th>Rate</th>
+                <th>7 days</th>
                 <th>30 days</th>
                 <th>Streak</th>
+                <th>Missed</th>
                 <th>Total</th>
                 <th>Today</th>
                 <th>Last</th>
@@ -611,8 +696,21 @@
       return 1;
     }
 
+    function trendLabel(value) {
+      if (value > 0) return `+${value}%`;
+      if (value < 0) return `${value}%`;
+      return "0%";
+    }
+
+    function trendClass(value) {
+      if (value > 0) return "delta up";
+      if (value < 0) return "delta down";
+      return "delta flat";
+    }
+
     function renderStats(stats) {
       const rate = Math.max(0, Math.min(100, stats.completion_rate));
+      const trend = stats.trend || 0;
       const dailyValues = Object.values(stats.daily_done);
       const max = Math.max(1, ...dailyValues);
       const best = stats.dates.reduce((winner, date) => {
@@ -624,17 +722,32 @@
       document.querySelector("#rate").textContent = `${rate}%`;
       document.querySelector("#ring").style.setProperty("--value", `${Math.round(rate * 3.6)}deg`);
       document.querySelector("#today-score").textContent = `${stats.today_done}/${stats.habits_count}`;
-      document.querySelector("#period-score").textContent = `${stats.period_completed}/${stats.possible}`;
-      document.querySelector("#habit-count").textContent = stats.habits_count;
-      document.querySelector("#missed").textContent = stats.missed_days;
+      document.querySelector("#week-score").textContent = `${stats.week_rate || 0}%`;
+      document.querySelector("#perfect-score").textContent = stats.perfect_days || 0;
+      document.querySelector("#trend-score").textContent = trendLabel(trend);
       document.querySelector("#best-day").textContent = best.value ? `Лучший день: ${best.date} · ${best.value}` : "Лучший день: -";
 
-      const title = rate >= 80 ? "Система держится уверенно" : rate >= 45 ? "Есть рабочий ритм" : "Пока слабая регулярность";
+      const title = rate >= 80 ? "Ритм держится уверенно" : rate >= 45 ? "Ритм рабочий" : "Ритм нужно укрепить";
       const copy = stats.habits_count
-        ? `За период закрыто ${stats.period_completed} из ${stats.possible}. Средний показатель: ${rate}%.`
+        ? `30 дней: ${stats.period_completed}/${stats.possible}. Неделя: ${stats.week_completed}/${stats.week_possible}.`
         : "Добавь привычку во вкладке управления, а отметки делай в боте.";
       document.querySelector("#summary-title").textContent = title;
       document.querySelector("#summary-copy").textContent = copy;
+
+      const bestHabit = stats.best_habit;
+      const focusHabit = stats.focus_habit;
+      document.querySelector("#best-habit").textContent = bestHabit ? bestHabit.name : "-";
+      document.querySelector("#best-habit-copy").textContent = bestHabit
+        ? `${bestHabit.completion_rate}% за 30 дней · серия ${bestHabit.streak}`
+        : "Появится после первых отметок.";
+      document.querySelector("#focus-habit").textContent = focusHabit ? focusHabit.name : "-";
+      document.querySelector("#focus-habit-copy").textContent = focusHabit
+        ? `${focusHabit.completion_rate}% за 30 дней · пропусков ${focusHabit.missed_count}`
+        : "Пока нечего улучшать.";
+      document.querySelector("#active-days").textContent = `${stats.active_days || 0} из 29 дней`;
+      const trendBadge = document.querySelector("#trend-badge");
+      trendBadge.textContent = `${trendLabel(trend)} к прошлой неделе`;
+      trendBadge.className = trendClass(trend);
 
       document.querySelector("#heatmap").innerHTML = stats.dates.map((date) => {
         const value = stats.daily_done[date] || 0;
@@ -649,13 +762,15 @@
             <div class="rate-track"><div class="rate-fill" style="--width:${habit.completion_rate}%"></div></div>
             <span class="muted">${habit.completion_rate}%</span>
           </td>
+          <td>${habit.last_7_completed}/${habit.last_7_possible}</td>
           <td>${habit.period_completed}/${habit.possible}</td>
           <td>${habit.streak}</td>
+          <td>${habit.missed_count}</td>
           <td>${habit.total_completed}</td>
-          <td>${habit.done_today ? "done" : "open"}</td>
+          <td><span class="table-chip ${habit.done_today ? "done" : "open"}">${habit.done_today ? "да" : "нет"}</span></td>
           <td>${habit.last_completed_date || "-"}</td>
         </tr>
-      `).join("") : '<tr><td colspan="7" class="muted">Нет привычек для анализа.</td></tr>';
+      `).join("") : '<tr><td colspan="9" class="muted">Нет привычек для анализа.</td></tr>';
     }
 
     function renderManage(data) {

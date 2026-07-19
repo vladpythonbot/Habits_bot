@@ -260,7 +260,10 @@ async def api_stats(request: web.Request) -> web.Response:
         logs_by_habit.setdefault(habit_id, set()).add(completed_date)
 
     possible = 0
+    daily_possible = {date: 0 for date in completed_dates}
     habit_rows = []
+    last_7_dates = completed_dates[-7:]
+    previous_7_dates = completed_dates[-14:-7]
     for habit in habits:
         habit_id, name, created_date, streak, total_completed, last_completed, goal_days, group_id = habit
         created = parse_date(habit[2])
@@ -268,8 +271,11 @@ async def api_stats(request: web.Request) -> web.Response:
         for date in completed_dates:
             if parse_date(date) >= created:
                 habit_possible += 1
+                daily_possible[date] += 1
                 possible += 1
         habit_period_done = len(logs_by_habit.get(habit_id, set()).intersection(completed_dates))
+        habit_last_7_possible = sum(1 for date in last_7_dates if parse_date(date) >= created)
+        habit_last_7_done = len(logs_by_habit.get(habit_id, set()).intersection(last_7_dates))
         habit_rate = round(habit_period_done / habit_possible * 100) if habit_possible else 0
         habit_rows.append({
             "id": habit_id,
@@ -282,12 +288,35 @@ async def api_stats(request: web.Request) -> web.Response:
             "period_completed": habit_period_done,
             "possible": habit_possible,
             "completion_rate": habit_rate,
+            "last_7_completed": habit_last_7_done,
+            "last_7_possible": habit_last_7_possible,
+            "last_7_rate": round(habit_last_7_done / habit_last_7_possible * 100) if habit_last_7_possible else 0,
+            "missed_count": max(habit_possible - habit_period_done, 0),
         })
 
     period_completed = sum(daily_done[date] for date in completed_dates)
     completion_rate = round(period_completed / possible * 100) if possible else 0
     missed_today = await get_missed_habit_ids(user_id)
     habit_rows.sort(key=lambda item: (-item["completion_rate"], -item["streak"], item["name"].lower()))
+    week_possible = sum(daily_possible.get(date, 0) for date in last_7_dates)
+    week_completed = sum(daily_done.get(date, 0) for date in last_7_dates)
+    prev_week_possible = sum(daily_possible.get(date, 0) for date in previous_7_dates)
+    prev_week_completed = sum(daily_done.get(date, 0) for date in previous_7_dates)
+    week_rate = round(week_completed / week_possible * 100) if week_possible else 0
+    prev_week_rate = round(prev_week_completed / prev_week_possible * 100) if prev_week_possible else 0
+    trend = week_rate - prev_week_rate
+    active_days = sum(1 for date in completed_dates if daily_done.get(date, 0) > 0)
+    perfect_days = sum(
+        1
+        for date in completed_dates
+        if daily_possible.get(date, 0) > 0 and daily_done.get(date, 0) >= daily_possible.get(date, 0)
+    )
+    best_habit = habit_rows[0] if habit_rows else None
+    focus_habit = min(
+        (habit for habit in habit_rows if habit["possible"] > 0),
+        key=lambda item: (item["completion_rate"], -item["missed_count"], item["name"].lower()),
+        default=None,
+    )
 
     return web.json_response({
         "today": today,
@@ -300,6 +329,16 @@ async def api_stats(request: web.Request) -> web.Response:
         "today_done": daily_done.get(today, 0),
         "dates": dates,
         "daily_done": daily_done,
+        "daily_possible": daily_possible,
+        "week_completed": week_completed,
+        "week_possible": week_possible,
+        "week_rate": week_rate,
+        "prev_week_rate": prev_week_rate,
+        "trend": trend,
+        "active_days": active_days,
+        "perfect_days": perfect_days,
+        "best_habit": best_habit,
+        "focus_habit": focus_habit,
         "habit_rows": habit_rows,
     })
 
