@@ -253,20 +253,41 @@ async def api_stats(request: web.Request) -> web.Response:
     logs = await get_habit_logs(user_id, days=30)
     completed_dates = [date for date in dates if date != today]
     daily_done = {date: 0 for date in dates}
-    for _, completed_date in logs:
+    logs_by_habit: dict[int, set[str]] = {}
+    for habit_id, completed_date in logs:
         if completed_date in daily_done:
             daily_done[completed_date] += 1
+        logs_by_habit.setdefault(habit_id, set()).add(completed_date)
 
     possible = 0
+    habit_rows = []
     for habit in habits:
+        habit_id, name, created_date, streak, total_completed, last_completed, goal_days, group_id = habit
         created = parse_date(habit[2])
+        habit_possible = 0
         for date in completed_dates:
             if parse_date(date) >= created:
+                habit_possible += 1
                 possible += 1
+        habit_period_done = len(logs_by_habit.get(habit_id, set()).intersection(completed_dates))
+        habit_rate = round(habit_period_done / habit_possible * 100) if habit_possible else 0
+        habit_rows.append({
+            "id": habit_id,
+            "name": name,
+            "created_date": created_date,
+            "streak": streak,
+            "total_completed": total_completed,
+            "last_completed_date": last_completed,
+            "done_today": today in logs_by_habit.get(habit_id, set()),
+            "period_completed": habit_period_done,
+            "possible": habit_possible,
+            "completion_rate": habit_rate,
+        })
 
     period_completed = sum(daily_done[date] for date in completed_dates)
     completion_rate = round(period_completed / possible * 100) if possible else 0
     missed_today = await get_missed_habit_ids(user_id)
+    habit_rows.sort(key=lambda item: (-item["completion_rate"], -item["streak"], item["name"].lower()))
 
     return web.json_response({
         "today": today,
@@ -279,6 +300,7 @@ async def api_stats(request: web.Request) -> web.Response:
         "today_done": daily_done.get(today, 0),
         "dates": dates,
         "daily_done": daily_done,
+        "habit_rows": habit_rows,
     })
 
 
