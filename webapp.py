@@ -277,6 +277,7 @@ async def api_stats(request: web.Request) -> web.Response:
         habit_last_7_possible = sum(1 for date in last_7_dates if parse_date(date) >= created)
         habit_last_7_done = len(logs_by_habit.get(habit_id, set()).intersection(last_7_dates))
         habit_rate = round(habit_period_done / habit_possible * 100) if habit_possible else 0
+        habit_log_dates = logs_by_habit.get(habit_id, set())
         habit_rows.append({
             "id": habit_id,
             "name": name,
@@ -292,6 +293,14 @@ async def api_stats(request: web.Request) -> web.Response:
             "last_7_possible": habit_last_7_possible,
             "last_7_rate": round(habit_last_7_done / habit_last_7_possible * 100) if habit_last_7_possible else 0,
             "missed_count": max(habit_possible - habit_period_done, 0),
+            "calendar": [
+                {
+                    "date": date,
+                    "done": date in habit_log_dates,
+                    "available": parse_date(date) >= created,
+                }
+                for date in dates
+            ],
         })
 
     period_completed = sum(daily_done[date] for date in completed_dates)
@@ -320,11 +329,50 @@ async def api_stats(request: web.Request) -> web.Response:
         key=lambda item: (item["completion_rate"], -item["missed_count"], item["name"].lower()),
         default=None,
     )
+    total_completed = sum(habit[4] for habit in habits)
+    achievements = [
+        {
+            "id": "first_habit",
+            "title": "Старт",
+            "text": "Первая привычка создана",
+            "unlocked": len(habits) > 0,
+        },
+        {
+            "id": "first_done",
+            "title": "Первая отметка",
+            "text": "Есть первое выполнение",
+            "unlocked": total_completed > 0,
+        },
+        {
+            "id": "seven_streak",
+            "title": "7 дней подряд",
+            "text": "Серия держится неделю",
+            "unlocked": best_streak >= 7,
+        },
+        {
+            "id": "ten_done",
+            "title": "10 отметок",
+            "text": "Накоплено 10 выполнений",
+            "unlocked": total_completed >= 10,
+        },
+        {
+            "id": "perfect_day",
+            "title": "Идеальный день",
+            "text": "Все привычки закрыты за день",
+            "unlocked": perfect_days > 0,
+        },
+        {
+            "id": "week_80",
+            "title": "Сильная неделя",
+            "text": "80%+ за последние 7 дней",
+            "unlocked": week_rate >= 80,
+        },
+    ]
 
     return web.json_response({
         "today": today,
         "habits_count": len(habits),
-        "total_completed": sum(habit[4] for habit in habits),
+        "total_completed": total_completed,
         "period_completed": period_completed,
         "possible": possible,
         "completion_rate": completion_rate,
@@ -345,6 +393,7 @@ async def api_stats(request: web.Request) -> web.Response:
         "average_streak": average_streak,
         "best_habit": best_habit,
         "focus_habit": focus_habit,
+        "achievements": achievements,
         "habit_rows": habit_rows,
     })
 

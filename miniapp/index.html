@@ -103,7 +103,7 @@
 
     .tabs {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 6px;
       margin-bottom: 12px;
       padding: 4px;
@@ -309,6 +309,29 @@
       gap: 10px;
     }
 
+    .today-list {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .today-habit {
+      padding: 12px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .mark-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .mark-actions button {
+      min-height: 38px;
+      padding: 0 8px;
+    }
+
     .habit-stat-card {
       padding: 12px;
       display: grid;
@@ -368,6 +391,35 @@
       color: var(--text);
       font-size: 15px;
       line-height: 1.1;
+    }
+
+    .achievements {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .achievement {
+      min-height: 92px;
+      padding: 12px;
+      display: grid;
+      align-content: start;
+      gap: 6px;
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+    }
+
+    .achievement.unlocked {
+      background: var(--sun-soft);
+      color: var(--text);
+      border-color: #efd29c;
+    }
+
+    .achievement b {
+      font-size: 15px;
+      color: var(--text);
     }
 
     .form-panel {
@@ -445,6 +497,18 @@
       border-top: 1px solid var(--line);
     }
 
+    .preset-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .preset-row button {
+      min-height: 34px;
+      padding: 0 8px;
+      font-size: 12px;
+    }
+
     .reminder-row {
       grid-template-columns: 50px 1fr auto;
     }
@@ -461,13 +525,62 @@
 
     .hidden { display: none; }
 
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: end center;
+      padding: 16px 12px;
+      background: rgba(20, 28, 24, .32);
+    }
+
+    .modal.hidden { display: none; }
+
+    .detail-card {
+      width: min(620px, 100%);
+      max-height: 86vh;
+      overflow: auto;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 18px 40px rgba(20, 28, 24, .22);
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(10, minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
+      border-radius: 6px;
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+    }
+
+    .calendar-day.done {
+      background: var(--mint);
+      border-color: var(--mint);
+    }
+
+    .calendar-day.future {
+      opacity: .35;
+    }
+
     @media (max-width: 680px) {
       .today-card { grid-template-columns: 96px 1fr; }
       .ring { width: 92px; }
       .metrics-row,
-      .insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .insight-grid,
+      .achievements { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .week-strip { gap: 5px; }
       .habit-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .mark-actions { grid-template-columns: 1fr; }
       .reminder-row { grid-template-columns: 44px 1fr; }
       .reminder-row button { grid-column: 1 / -1; }
       .status { white-space: normal; text-align: right; }
@@ -478,6 +591,7 @@
       .metrics-row { grid-template-columns: 1fr 1fr; }
       .add-row { grid-template-columns: 1fr; }
       .today-card { grid-template-columns: 1fr; }
+      .preset-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (prefers-color-scheme: dark) {
@@ -515,11 +629,12 @@
     </header>
 
     <nav class="tabs">
-      <button class="active" id="stats-tab" type="button">Аналитика</button>
+      <button class="active" id="today-tab" type="button">Сегодня</button>
+      <button class="secondary" id="stats-tab" type="button">Прогресс</button>
       <button class="secondary" id="manage-tab" type="button">Управление</button>
     </nav>
 
-    <section id="stats-view">
+    <section id="today-view">
       <div class="panel today-card">
         <div class="ring" id="ring"><b id="rate">0%</b></div>
         <div class="today-copy">
@@ -532,6 +647,14 @@
         </div>
       </div>
 
+      <div class="section-head">
+        <h2>Отметить сегодня</h2>
+        <span class="muted" id="today-left">0 осталось</span>
+      </div>
+      <div class="today-list" id="today-list"></div>
+    </section>
+
+    <section id="stats-view" class="hidden">
       <div class="metrics-row">
         <div class="metric-card mint">
           <b id="streak-score">0</b>
@@ -584,6 +707,14 @@
 
       <div class="panel">
         <div class="section-head">
+          <h2>Достижения</h2>
+          <span class="muted" id="achievement-score">0/0</span>
+        </div>
+        <div class="achievements" id="achievements"></div>
+      </div>
+
+      <div class="panel">
+        <div class="section-head">
           <h2>Привычки</h2>
           <span class="muted">30 дней</span>
         </div>
@@ -610,21 +741,44 @@
     </section>
   </main>
 
+  <div class="modal hidden" id="detail-modal">
+    <div class="detail-card">
+      <div class="section-head">
+        <div>
+          <h2 id="detail-title">Привычка</h2>
+          <p class="muted" id="detail-subtitle">30 дней</p>
+        </div>
+        <button class="ghost" id="detail-close" type="button">Закрыть</button>
+      </div>
+      <div class="habit-meta">
+        <span><b id="detail-rate">0%</b>ритм</span>
+        <span><b id="detail-streak">0</b>серия</span>
+        <span><b id="detail-week">0/0</b>7 дней</span>
+        <span><b id="detail-missed">0</b>пропусков</span>
+      </div>
+      <div class="calendar-grid" id="detail-calendar"></div>
+    </div>
+  </div>
+
   <script>
     const tg = window.Telegram?.WebApp;
     tg?.ready();
     tg?.expand();
 
     const initData = tg?.initData || "";
-    const state = { data: null, stats: null, tab: "stats" };
+    const state = { data: null, stats: null, tab: "today" };
 
+    const todayTab = document.querySelector("#today-tab");
     const statsTab = document.querySelector("#stats-tab");
     const manageTab = document.querySelector("#manage-tab");
+    const todayView = document.querySelector("#today-view");
     const statsView = document.querySelector("#stats-view");
     const manageView = document.querySelector("#manage-view");
+    const todayList = document.querySelector("#today-list");
     const list = document.querySelector("#list");
     const form = document.querySelector("#add-form");
     const input = document.querySelector("#habit-name");
+    const detailModal = document.querySelector("#detail-modal");
 
     async function request(path, payload = {}) {
       const response = await fetch(path, {
@@ -650,13 +804,18 @@
 
     function setTab(tab) {
       state.tab = tab;
+      const today = tab === "today";
       const stats = tab === "stats";
+      const manage = tab === "manage";
+      todayView.classList.toggle("hidden", !today);
       statsView.classList.toggle("hidden", !stats);
-      manageView.classList.toggle("hidden", stats);
+      manageView.classList.toggle("hidden", !manage);
+      todayTab.classList.toggle("active", today);
+      todayTab.classList.toggle("secondary", !today);
       statsTab.classList.toggle("active", stats);
       statsTab.classList.toggle("secondary", !stats);
-      manageTab.classList.toggle("active", !stats);
-      manageTab.classList.toggle("secondary", stats);
+      manageTab.classList.toggle("active", manage);
+      manageTab.classList.toggle("secondary", !manage);
     }
 
     function level(value, max) {
@@ -680,6 +839,75 @@
 
     function dayLabel(date) {
       return date.slice(5).replace("-", ".");
+    }
+
+    function byId(items) {
+      return new Map((items || []).map((item) => [Number(item.id), item]));
+    }
+
+    async function refreshAll() {
+      const [data, stats] = await Promise.all([
+        request("/api/state"),
+        request("/api/stats"),
+      ]);
+      state.data = data;
+      state.stats = stats;
+      renderToday(data, stats);
+      renderStats(stats);
+      renderManage(data);
+    }
+
+    function renderToday(data, stats) {
+      const habits = data.habits || [];
+      const open = habits.filter((habit) => !habit.done_today && !habit.missed_today).length;
+      document.querySelector("#today-left").textContent = `${open} осталось`;
+
+      if (!habits.length) {
+        todayList.innerHTML = '<div class="empty">Пока нет привычек. Добавь первую во вкладке управления.</div>';
+        return;
+      }
+
+      const statsMap = byId(stats.habit_rows);
+      todayList.innerHTML = habits.map((habit) => {
+        const row = statsMap.get(Number(habit.id));
+        const rate = row?.completion_rate || 0;
+        const status = habit.done_today ? "done" : "open";
+        const statusText = habit.done_today ? "готово" : (habit.missed_today ? "не сегодня" : "ждёт отметки");
+        return `
+          <article class="today-habit panel">
+            <div class="habit-progress-head">
+              <div class="habit-progress-title">
+                <strong>${escapeHtml(habit.name)}</strong>
+                <span class="muted">серия ${habit.streak} · ${rate}% за 30 дней</span>
+              </div>
+              <span class="status ${status}">${statusText}</span>
+            </div>
+            <div class="rate-track"><div class="rate-fill" style="--width:${rate}%"></div></div>
+            <div class="mark-actions">
+              ${habit.done_today ? "" : `<button data-action="mark" data-id="${habit.id}">Выполнил</button>`}
+              ${habit.done_today || habit.missed_today ? "" : `<button class="ghost" data-action="miss" data-id="${habit.id}">Не сегодня</button>`}
+              <button class="ghost" data-action="detail" data-id="${habit.id}">Календарь</button>
+              ${habit.done_today ? `<button class="danger" data-action="undo" data-id="${habit.id}">Отменить</button>` : ""}
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function openDetail(habitId) {
+      const habit = (state.stats?.habit_rows || []).find((item) => Number(item.id) === Number(habitId));
+      if (!habit) return;
+      document.querySelector("#detail-title").textContent = habit.name;
+      document.querySelector("#detail-subtitle").textContent = `${habit.period_completed}/${habit.possible} за 30 дней`;
+      document.querySelector("#detail-rate").textContent = `${habit.completion_rate}%`;
+      document.querySelector("#detail-streak").textContent = habit.streak;
+      document.querySelector("#detail-week").textContent = `${habit.last_7_completed}/${habit.last_7_possible}`;
+      document.querySelector("#detail-missed").textContent = habit.missed_count;
+      document.querySelector("#detail-calendar").innerHTML = habit.calendar.map((day) => {
+        const className = `calendar-day ${day.done ? "done" : ""} ${day.available ? "" : "future"}`;
+        return `<span class="${className}" title="${day.date}"></span>`;
+      }).join("");
+      detailModal.classList.remove("hidden");
     }
 
     function renderStats(stats) {
@@ -727,6 +955,16 @@
       trendBadge.textContent = `${trendLabel(trend)} к прошлой неделе`;
       trendBadge.className = trendClass(trend);
 
+      const achievements = stats.achievements || [];
+      const unlocked = achievements.filter((item) => item.unlocked).length;
+      document.querySelector("#achievement-score").textContent = `${unlocked}/${achievements.length}`;
+      document.querySelector("#achievements").innerHTML = achievements.length ? achievements.map((item) => `
+        <div class="achievement ${item.unlocked ? "unlocked" : ""}">
+          <b>${escapeHtml(item.title)}</b>
+          <span>${escapeHtml(item.text)}</span>
+        </div>
+      `).join("") : '<div class="empty">Достижения появятся после первых отметок.</div>';
+
       document.querySelector("#week-strip").innerHTML = stats.dates.slice(-8, -1).map((date) => {
         const value = stats.daily_done[date] || 0;
         const possible = stats.daily_possible?.[date] || 0;
@@ -747,7 +985,7 @@
               <strong>${escapeHtml(habit.name)}</strong>
               <span class="muted">${habit.period_completed}/${habit.possible} за 30 дней</span>
             </div>
-            <span class="status ${habit.done_today ? "done" : "open"}">${habit.done_today ? "готово" : "сегодня"}</span>
+            <button class="ghost" data-action="detail" data-id="${habit.id}">Календарь</button>
           </div>
           <div class="rate-track"><div class="rate-fill" style="--width:${habit.completion_rate}%"></div></div>
           <div class="habit-meta">
@@ -782,6 +1020,12 @@
               <button class="danger" data-action="delete" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Удалить</button>
             </div>
             <div class="settings">
+              <div class="preset-row">
+                <button class="ghost" data-action="reminder-preset" data-id="${habit.id}" data-time="08:00">Утро</button>
+                <button class="ghost" data-action="reminder-preset" data-id="${habit.id}" data-time="13:00">День</button>
+                <button class="ghost" data-action="reminder-preset" data-id="${habit.id}" data-time="20:00">Вечер</button>
+                <button class="ghost" data-action="reminder-preset" data-id="${habit.id}" data-time="09:00, 14:00, 20:00">Часто</button>
+              </div>
               <form class="inline-form reminder-row" data-action="reminder-form" data-id="${habit.id}">
                 <input value="⏰" disabled>
                 <input name="reminder" placeholder="09:00 или 09:00, 21:00" value="${escapeHtml(habit.reminder?.reminder_time || "")}">
@@ -796,21 +1040,16 @@
 
     async function refresh() {
       try {
-        const [data, stats] = await Promise.all([
-          request("/api/state"),
-          request("/api/stats"),
-        ]);
-        state.data = data;
-        state.stats = stats;
-        renderStats(stats);
-        renderManage(data);
+        await refreshAll();
       } catch (error) {
         const details = initData ? "Не удалось проверить вход Telegram." : "Telegram не передал данные входа.";
+        todayList.innerHTML = `<div class="error">${details}</div>`;
         statsView.innerHTML = `<div class="error">${details}</div>`;
         list.innerHTML = `<div class="error">${details}</div>`;
       }
     }
 
+    todayTab.addEventListener("click", () => setTab("today"));
     statsTab.addEventListener("click", () => setTab("stats"));
     manageTab.addEventListener("click", () => setTab("manage"));
 
@@ -821,6 +1060,7 @@
       input.value = "";
       state.data = await request("/api/habits", { name });
       state.stats = await request("/api/stats");
+      renderToday(state.data, state.stats);
       renderManage(state.data);
       renderStats(state.stats);
     });
@@ -832,7 +1072,10 @@
       const reminder = reminderForm.elements.reminder.value.trim();
       if (!reminder) return;
       state.data = await request(`/api/habits/${reminderForm.dataset.id}/reminder`, { reminder_time: reminder });
+      state.stats = await request("/api/stats");
+      renderToday(state.data, state.stats);
       renderManage(state.data);
+      renderStats(state.stats);
     });
 
     list.addEventListener("click", async (event) => {
@@ -855,9 +1098,52 @@
         state.data = await request(`/api/habits/${id}/reminder/off`);
       }
 
+      if (action === "reminder-preset") {
+        state.data = await request(`/api/habits/${id}/reminder`, { reminder_time: button.dataset.time });
+      }
+
       state.stats = await request("/api/stats");
+      renderToday(state.data, state.stats);
       renderManage(state.data);
       renderStats(state.stats);
+    });
+
+    todayList.addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const { action, id } = button.dataset;
+
+      if (action === "detail") {
+        openDetail(id);
+        return;
+      }
+
+      if (action === "mark") {
+        await request(`/api/habits/${id}/mark`);
+      }
+
+      if (action === "miss") {
+        await request(`/api/habits/${id}/miss`);
+      }
+
+      if (action === "undo") {
+        await request(`/api/habits/${id}/undo`);
+      }
+
+      await refreshAll();
+    });
+
+    document.querySelector("#habit-stats").addEventListener("click", (event) => {
+      const button = event.target.closest('button[data-action="detail"]');
+      if (button) openDetail(button.dataset.id);
+    });
+
+    document.querySelector("#detail-close").addEventListener("click", () => {
+      detailModal.classList.add("hidden");
+    });
+
+    detailModal.addEventListener("click", (event) => {
+      if (event.target === detailModal) detailModal.classList.add("hidden");
     });
 
     refresh();
