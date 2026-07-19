@@ -73,7 +73,6 @@ class Form(StatesGroup):
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🟢 Сегодня")],
-        [KeyboardButton(text="🟣 Привычки"), KeyboardButton(text="🔵 Статистика")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
@@ -648,7 +647,7 @@ async def today(message: types.Message, state: FSMContext):
 @router.message(F.text.in_(["🔵 Статистика", "Статистика"]))
 async def statistics(message: types.Message, state: FSMContext):
     await state.clear()
-    await show_statistics(message, message.from_user.id)
+    await message.answer("Статистика теперь в Mini App: открой кнопку меню рядом с полем ввода.", reply_markup=main_keyboard)
 
 
 async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int):
@@ -688,7 +687,7 @@ async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int
 
 @router.callback_query(F.data == "open_stats")
 async def open_stats(callback: types.CallbackQuery):
-    await show_statistics(callback, callback.from_user.id)
+    await callback.answer("Статистика теперь в Mini App", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("group_stats_"))
@@ -978,8 +977,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     if not habits:
         await answer_or_edit(
             obj,
-            await main_summary(user_id),
-            InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ Добавить привычку", callback_data="add_habit")]]),
+            f"{await main_summary(user_id)}\n\nДобавление и управление теперь в Mini App.",
         )
         return
 
@@ -1017,12 +1015,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
                 ),
             ])
 
-    rows.append([InlineKeyboardButton(text="➕ Добавить", callback_data="add_habit")])
-    rows.append([
-        InlineKeyboardButton(text="🔵 Статистика", callback_data="open_stats"),
-        InlineKeyboardButton(text="🟣 Управление", callback_data="open_habits"),
-    ])
-    await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows))
+    await answer_or_edit(obj, text, InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
 
 
 @router.callback_query(F.data.startswith("mark_"))
@@ -1062,7 +1055,7 @@ async def process_miss_callback(callback: types.CallbackQuery):
 @router.message(F.text.in_(["🟣 Привычки", "Привычки"]))
 async def habits(message: types.Message, state: FSMContext):
     await state.clear()
-    await show_habits(message, message.from_user.id)
+    await message.answer("Управление привычками теперь в Mini App: открой кнопку меню рядом с полем ввода.", reply_markup=main_keyboard)
 
 
 @router.message(F.text.in_(["⚙️ Настройки", "Настройки"]))
@@ -1493,7 +1486,7 @@ async def ask_delete_habit(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "open_habits")
 async def open_habits(callback: types.CallbackQuery):
-    await show_habits(callback, callback.from_user.id)
+    await callback.answer("Управление теперь в Mini App", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("delete_yes_"))

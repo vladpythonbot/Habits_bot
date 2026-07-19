@@ -14,72 +14,60 @@
       --muted: #716872;
       --accent: #d94f8a;
       --accent-strong: #b93770;
-      --ok: #15965f;
+      --danger: #c83f4d;
       --line: #eadde5;
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
     }
+
     main {
-      width: min(720px, 100%);
+      width: min(760px, 100%);
       margin: 0 auto;
       padding: 18px 14px 28px;
     }
+
     header {
       display: flex;
       justify-content: space-between;
       gap: 14px;
       align-items: flex-start;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
+
     h1 {
       margin: 0;
       font-size: 26px;
       line-height: 1.1;
       letter-spacing: 0;
     }
-    .date {
-      margin-top: 4px;
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .date,
+    .muted {
       color: var(--muted);
       font-size: 14px;
     }
-    .score {
-      min-width: 88px;
-      border-radius: 8px;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      padding: 10px 12px;
-      text-align: center;
-    }
-    .score b {
-      display: block;
-      color: var(--accent-strong);
-      font-size: 24px;
-    }
-    .score span {
-      color: var(--muted);
-      font-size: 12px;
-    }
-    form {
-      display: flex;
+
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
-    input {
-      flex: 1;
-      min-width: 0;
-      height: 44px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      padding: 0 12px;
-      background: var(--panel);
-      color: var(--text);
-      font: inherit;
-    }
+
     button {
       min-height: 40px;
       border: 0;
@@ -91,50 +79,141 @@
       font-weight: 650;
       cursor: pointer;
     }
+
     button.secondary {
       background: transparent;
       color: var(--muted);
       border: 1px solid var(--line);
     }
-    button.done { background: var(--ok); }
-    .list {
-      display: grid;
-      gap: 10px;
+
+    button.danger {
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid var(--line);
     }
+
+    button.active {
+      background: var(--accent-strong);
+      color: white;
+    }
+
+    .panel,
     .habit {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 12px;
     }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric b {
+      display: block;
+      color: var(--accent-strong);
+      font-size: 24px;
+      line-height: 1.1;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .chart {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 4px;
+      margin-top: 12px;
+      align-items: end;
+      min-height: 76px;
+    }
+
+    .bar {
+      min-height: 8px;
+      border-radius: 4px 4px 2px 2px;
+      background: var(--accent);
+      opacity: .38;
+    }
+
+    form {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    input {
+      flex: 1;
+      min-width: 0;
+      height: 44px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      padding: 0 12px;
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+    }
+
+    select {
+      width: 100%;
+      min-width: 0;
+      height: 40px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      padding: 0 10px;
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+    }
+
     .habit-top {
       display: flex;
       justify-content: space-between;
       gap: 12px;
       align-items: flex-start;
     }
+
     .habit-name {
       margin: 0;
       font-size: 17px;
       line-height: 1.3;
       overflow-wrap: anywhere;
     }
-    .meta {
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 13px;
-    }
+
     .status {
       white-space: nowrap;
       color: var(--muted);
       font-size: 13px;
     }
+
     .actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
       margin-top: 12px;
     }
+
+    .settings {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .inline-form {
+      display: grid;
+      grid-template-columns: 64px 1fr auto;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
     .empty,
     .error {
       border: 1px dashed var(--line);
@@ -143,6 +222,9 @@
       color: var(--muted);
       text-align: center;
     }
+
+    .hidden { display: none; }
+
     @media (prefers-color-scheme: dark) {
       :root {
         --bg: #171316;
@@ -161,19 +243,52 @@
         <h1>HabitFlow</h1>
         <div class="date" id="today">Сегодня</div>
       </div>
-      <div class="score">
-        <b id="score">0/0</b>
-        <span>готово</span>
-      </div>
     </header>
 
-    <form id="add-form">
-      <input id="habit-name" maxlength="80" placeholder="Новая привычка" autocomplete="off">
-      <button type="submit">Добавить</button>
-    </form>
+    <nav class="tabs">
+      <button class="active" id="stats-tab" type="button">Статистика</button>
+      <button class="secondary" id="manage-tab" type="button">Управление</button>
+    </nav>
 
-    <section class="list" id="list">
-      <div class="empty">Загрузка...</div>
+    <section id="stats-view">
+      <div class="grid">
+        <div class="panel metric">
+          <b id="rate">0%</b>
+          <span>за 30 дней</span>
+        </div>
+        <div class="panel metric">
+          <b id="today-score">0/0</b>
+          <span>сегодня</span>
+        </div>
+        <div class="panel metric">
+          <b id="period-score">0/0</b>
+          <span>выполнено</span>
+        </div>
+        <div class="panel metric">
+          <b id="missed">0</b>
+          <span>не сегодня</span>
+        </div>
+      </div>
+      <div class="panel" style="margin-top: 10px;">
+        <h2>Последние 30 дней</h2>
+        <div class="chart" id="chart"></div>
+      </div>
+    </section>
+
+    <section id="manage-view" class="hidden">
+      <form id="add-form">
+        <input id="habit-name" maxlength="80" placeholder="Новая привычка" autocomplete="off">
+        <button type="submit">Добавить</button>
+      </form>
+      <form class="inline-form" id="group-form">
+        <input id="group-emoji" maxlength="8" placeholder="🎯" autocomplete="off">
+        <input id="group-name" maxlength="60" placeholder="Новая тема" autocomplete="off">
+        <button type="submit">Создать</button>
+      </form>
+      <div class="list" id="groups"></div>
+      <div class="list" id="list">
+        <div class="empty">Загрузка...</div>
+      </div>
     </section>
   </main>
 
@@ -183,22 +298,26 @@
     tg?.expand();
 
     const initData = tg?.initData || "";
-    const list = document.querySelector("#list");
-    const score = document.querySelector("#score");
-    const today = document.querySelector("#today");
-    const form = document.querySelector("#add-form");
-    const input = document.querySelector("#habit-name");
+    const state = { data: null, stats: null, tab: "stats" };
 
-    async function request(path, options = {}) {
-      const method = options.method || "POST";
-      const payload = options.body ? JSON.parse(options.body) : {};
+    const statsTab = document.querySelector("#stats-tab");
+    const manageTab = document.querySelector("#manage-tab");
+    const statsView = document.querySelector("#stats-view");
+    const manageView = document.querySelector("#manage-view");
+    const list = document.querySelector("#list");
+    const groupsList = document.querySelector("#groups");
+    const form = document.querySelector("#add-form");
+    const groupForm = document.querySelector("#group-form");
+    const input = document.querySelector("#habit-name");
+    const groupEmoji = document.querySelector("#group-emoji");
+    const groupName = document.querySelector("#group-name");
+
+    async function request(path, payload = {}) {
       const response = await fetch(path, {
-        ...options,
-        method,
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Telegram-Init-Data": initData,
-          ...(options.headers || {}),
         },
         body: JSON.stringify({ _auth: initData, ...payload }),
       });
@@ -206,14 +325,8 @@
       return response.json();
     }
 
-    function statusText(habit) {
-      if (habit.done_today) return "выполнено";
-      if (habit.missed_today) return "не сегодня";
-      return "ждёт отметки";
-    }
-
     function escapeHtml(value) {
-      return value
+      return String(value)
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
@@ -221,61 +334,201 @@
         .replaceAll("'", "&#039;");
     }
 
-    function render(data) {
-      today.textContent = data.today;
-      score.textContent = `${data.summary.done}/${data.summary.total}`;
+    function setTab(tab) {
+      state.tab = tab;
+      const stats = tab === "stats";
+      statsView.classList.toggle("hidden", !stats);
+      manageView.classList.toggle("hidden", stats);
+      statsTab.classList.toggle("active", stats);
+      statsTab.classList.toggle("secondary", !stats);
+      manageTab.classList.toggle("active", !stats);
+      manageTab.classList.toggle("secondary", stats);
+    }
+
+    function renderStats(stats) {
+      document.querySelector("#today").textContent = stats.today;
+      document.querySelector("#rate").textContent = `${stats.completion_rate}%`;
+      document.querySelector("#today-score").textContent = `${stats.today_done}/${stats.habits_count}`;
+      document.querySelector("#period-score").textContent = `${stats.period_completed}/${stats.possible}`;
+      document.querySelector("#missed").textContent = stats.missed_days;
+
+      const max = Math.max(1, ...Object.values(stats.daily_done));
+      document.querySelector("#chart").innerHTML = stats.dates.map((date) => {
+        const value = stats.daily_done[date] || 0;
+        const height = 8 + Math.round((value / max) * 60);
+        return `<div class="bar" title="${date}: ${value}" style="height:${height}px; opacity:${value ? 1 : .22}"></div>`;
+      }).join("");
+    }
+
+    function renderManage(data) {
+      groupsList.innerHTML = data.groups.length ? data.groups.map((group) => `
+        <article class="habit">
+          <div class="habit-top">
+            <div>
+              <h2 class="habit-name">${escapeHtml(group.emoji)} ${escapeHtml(group.name)}</h2>
+              <div class="muted">привычек: ${group.count}</div>
+            </div>
+            <div class="status">тема</div>
+          </div>
+          <div class="actions">
+            <button class="secondary" data-action="group-emoji" data-id="${group.id}" data-name="${escapeHtml(group.name)}">Эмодзи</button>
+            <button class="danger" data-action="group-delete" data-id="${group.id}" data-name="${escapeHtml(group.name)}">Удалить</button>
+          </div>
+        </article>
+      `).join("") : "";
+
       if (!data.habits.length) {
-        list.innerHTML = '<div class="empty">Пока нет привычек.</div>';
+        list.innerHTML = '<div class="empty">Пока нет привычек. Добавь первую здесь, а отмечай в боте.</div>';
         return;
       }
+
+      const groupOptions = (selectedId) => [
+        `<option value="none"${selectedId === null ? " selected" : ""}>Основные</option>`,
+        ...data.groups.map((group) => (
+          `<option value="${group.id}"${selectedId === group.id ? " selected" : ""}>${escapeHtml(group.emoji)} ${escapeHtml(group.name)}</option>`
+        )),
+      ].join("");
+
       list.innerHTML = data.habits.map((habit) => `
         <article class="habit">
           <div class="habit-top">
             <div>
               <h2 class="habit-name">${escapeHtml(habit.name)}</h2>
-              <div class="meta">серия: ${habit.streak} · всего: ${habit.total_completed}</div>
+              <div class="muted">серия: ${habit.streak} · всего: ${habit.total_completed}</div>
             </div>
-            <div class="status">${statusText(habit)}</div>
+            <div class="status">${habit.done_today ? "сегодня отмечено" : "ждёт отметки в боте"}</div>
           </div>
           <div class="actions">
-            ${habit.done_today
-              ? `<button class="secondary" data-action="undo" data-id="${habit.id}">Отменить</button>`
-              : `<button class="done" data-action="mark" data-id="${habit.id}">Выполнил</button>`}
-            <button class="secondary" data-action="miss" data-id="${habit.id}">Не сегодня</button>
+            <button class="secondary" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Переименовать</button>
+            <button class="danger" data-action="delete" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Удалить</button>
+          </div>
+          <div class="settings">
+            <select data-action="group" data-id="${habit.id}">
+              ${groupOptions(habit.group_id)}
+            </select>
+            <form class="inline-form" data-action="reminder-form" data-id="${habit.id}">
+              <input value="⏰" disabled>
+              <input name="reminder" placeholder="09:00 или 09:00, 21:00" value="${escapeHtml(habit.reminder?.reminder_time || "")}">
+              <button type="submit">${habit.reminder?.enabled ? "Обновить" : "Включить"}</button>
+            </form>
+            ${habit.reminder?.enabled ? `<button class="secondary" data-action="reminder-off" data-id="${habit.id}">Отключить напоминание</button>` : ""}
           </div>
         </article>
       `).join("");
     }
 
-    async function load() {
+    async function refresh() {
       try {
-        render(await request("/api/state"));
+        const [data, stats] = await Promise.all([
+          request("/api/state"),
+          request("/api/stats"),
+        ]);
+        state.data = data;
+        state.stats = stats;
+        renderStats(stats);
+        renderManage(data);
       } catch (error) {
         const details = initData ? "Не удалось проверить вход Telegram." : "Telegram не передал данные входа.";
+        statsView.innerHTML = `<div class="error">${details}</div>`;
         list.innerHTML = `<div class="error">${details}</div>`;
       }
     }
+
+    statsTab.addEventListener("click", () => setTab("stats"));
+    manageTab.addEventListener("click", () => setTab("manage"));
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const name = input.value.trim();
       if (!name) return;
       input.value = "";
-      render(await request("/api/habits", {
-        method: "POST",
-        body: JSON.stringify({ name }),
-      }));
+      state.data = await request("/api/habits", { name });
+      state.stats = await request("/api/stats");
+      renderManage(state.data);
+      renderStats(state.stats);
+    });
+
+    groupForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const name = groupName.value.trim();
+      if (!name) return;
+      state.data = await request("/api/groups", {
+        name,
+        emoji: groupEmoji.value.trim() || "🎯",
+      });
+      groupName.value = "";
+      groupEmoji.value = "";
+      state.stats = await request("/api/stats");
+      renderManage(state.data);
+      renderStats(state.stats);
+    });
+
+    list.addEventListener("change", async (event) => {
+      const select = event.target.closest('select[data-action="group"]');
+      if (!select) return;
+      state.data = await request(`/api/habits/${select.dataset.id}/group`, { group_id: select.value });
+      state.stats = await request("/api/stats");
+      renderManage(state.data);
+      renderStats(state.stats);
+    });
+
+    list.addEventListener("submit", async (event) => {
+      const reminderForm = event.target.closest('form[data-action="reminder-form"]');
+      if (!reminderForm) return;
+      event.preventDefault();
+      const reminder = reminderForm.elements.reminder.value.trim();
+      if (!reminder) return;
+      state.data = await request(`/api/habits/${reminderForm.dataset.id}/reminder`, { reminder_time: reminder });
+      renderManage(state.data);
     });
 
     list.addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
-      const { action, id } = button.dataset;
-      button.disabled = true;
-      render(await request(`/api/habits/${id}/${action}`, { method: "POST" }));
+      const { action, id, name } = button.dataset;
+
+      if (action === "rename") {
+        const nextName = prompt("Новое название привычки:", name);
+        if (!nextName || !nextName.trim()) return;
+        state.data = await request(`/api/habits/${id}/rename`, { name: nextName.trim() });
+      }
+
+      if (action === "delete") {
+        if (!confirm(`Удалить привычку "${name}"? История тоже исчезнет.`)) return;
+        state.data = await request(`/api/habits/${id}/delete`);
+      }
+
+      if (action === "reminder-off") {
+        state.data = await request(`/api/habits/${id}/reminder/off`);
+      }
+
+      state.stats = await request("/api/stats");
+      renderManage(state.data);
+      renderStats(state.stats);
     });
 
-    load();
+    groupsList.addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const { action, id, name } = button.dataset;
+
+      if (action === "group-emoji") {
+        const emoji = prompt(`Новое эмодзи для "${name}":`, "🎯");
+        if (!emoji || !emoji.trim()) return;
+        state.data = await request(`/api/groups/${id}/emoji`, { emoji: emoji.trim() });
+      }
+
+      if (action === "group-delete") {
+        if (!confirm(`Удалить тему "${name}"? Привычки останутся в основных.`)) return;
+        state.data = await request(`/api/groups/${id}/delete`);
+      }
+
+      state.stats = await request("/api/stats");
+      renderManage(state.data);
+      renderStats(state.stats);
+    });
+
+    refresh();
   </script>
 </body>
 </html>
