@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bot import bot, dp
 from routers import APP_VERSION, daily_reminder, router
 from db import init_db
+from webapp import start_web_app
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,6 +27,7 @@ async def main():
                       id="daily_reminder")
 
     scheduler.start()
+    await start_web_app()
 
     logging.info("Бот успешно запущен")
 

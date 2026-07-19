@@ -9,6 +9,7 @@ Minimal Telegram bot for tracking daily habits without pressure. The bot focuses
 - Keep theme statistics separate from general statistics
 - Mark a habit as completed today
 - Mark a habit as "not today"
+- Open a Telegram Mini App for quick daily check-ins
 - Per-habit diary with 30-day history
 - Personal reminders for specific habits
 - Quick reminder presets and custom reminder times
@@ -21,6 +22,7 @@ Minimal Telegram bot for tracking daily habits without pressure. The bot focuses
 
 - Python 3.11+
 - aiogram 3
+- aiohttp
 - aiosqlite
 - APScheduler
 - python-dotenv
@@ -44,9 +46,13 @@ Create a `.env` file in the project root:
 ```env
 BOT_TOKEN=your_telegram_bot_token
 DB_PATH=habits.db
+MINI_APP_URL=https://your-domain.com/miniapp
+PORT=8080
 ```
 
 `DB_PATH` is optional. If it is not set, the bot creates `habits.db` in the project folder.
+`MINI_APP_URL` must be an HTTPS URL. If it is not set, the Mini App button is hidden.
+`PORT` is optional locally and is usually provided automatically by hosting platforms.
 
 ## Run Locally
 

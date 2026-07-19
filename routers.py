@@ -1,5 +1,6 @@
 # routers.py
 import logging
+import os
 import re
 from datetime import datetime
 from html import escape
@@ -14,6 +15,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 
 from bot import bot
@@ -48,6 +50,7 @@ from db import (
 router = Router()
 logger = logging.getLogger(__name__)
 APP_VERSION = "2026.07.01.1"
+MINI_APP_URL = os.getenv("MINI_APP_URL")
 
 REMINDER_PRESETS = {
     "morning": ("Утро", ["08:00"]),
@@ -68,6 +71,7 @@ class Form(StatesGroup):
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🟢 Сегодня")],
+        *([[KeyboardButton(text="📱 Mini App", web_app=WebAppInfo(url=MINI_APP_URL))]] if MINI_APP_URL else []),
         [KeyboardButton(text="🟣 Привычки"), KeyboardButton(text="🔵 Статистика")],
     ],
     resize_keyboard=True,
