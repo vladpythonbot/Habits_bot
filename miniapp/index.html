@@ -319,6 +319,7 @@
       padding: 12px;
       display: grid;
       gap: 12px;
+      cursor: pointer;
     }
 
     .mark-actions {
@@ -336,6 +337,7 @@
       padding: 12px;
       display: grid;
       gap: 10px;
+      cursor: pointer;
     }
 
     .habit-progress-head {
@@ -391,35 +393,6 @@
       color: var(--text);
       font-size: 15px;
       line-height: 1.1;
-    }
-
-    .achievements {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-    }
-
-    .achievement {
-      min-height: 92px;
-      padding: 12px;
-      display: grid;
-      align-content: start;
-      gap: 6px;
-      background: var(--surface-soft);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      color: var(--muted);
-    }
-
-    .achievement.unlocked {
-      background: var(--sun-soft);
-      color: var(--text);
-      border-color: #efd29c;
-    }
-
-    .achievement b {
-      font-size: 15px;
-      color: var(--text);
     }
 
     .form-panel {
@@ -497,18 +470,6 @@
       border-top: 1px solid var(--line);
     }
 
-    .preset-row {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 6px;
-    }
-
-    .preset-row button {
-      min-height: 34px;
-      padding: 0 8px;
-      font-size: 12px;
-    }
-
     .reminder-row {
       grid-template-columns: 50px 1fr auto;
     }
@@ -576,8 +537,7 @@
       .today-card { grid-template-columns: 96px 1fr; }
       .ring { width: 92px; }
       .metrics-row,
-      .insight-grid,
-      .achievements { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .week-strip { gap: 5px; }
       .habit-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .mark-actions { grid-template-columns: 1fr; }
@@ -591,7 +551,6 @@
       .metrics-row { grid-template-columns: 1fr 1fr; }
       .add-row { grid-template-columns: 1fr; }
       .today-card { grid-template-columns: 1fr; }
-      .preset-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (prefers-color-scheme: dark) {
@@ -707,14 +666,6 @@
 
       <div class="panel">
         <div class="section-head">
-          <h2>Достижения</h2>
-          <span class="muted" id="achievement-score">0/0</span>
-        </div>
-        <div class="achievements" id="achievements"></div>
-      </div>
-
-      <div class="panel">
-        <div class="section-head">
           <h2>Привычки</h2>
           <span class="muted">30 дней</span>
         </div>
@@ -740,6 +691,13 @@
       </div>
     </section>
   </main>
+
+  <datalist id="reminder-presets">
+    <option value="08:00" label="Утро"></option>
+    <option value="13:00" label="День"></option>
+    <option value="20:00" label="Вечер"></option>
+    <option value="09:00, 14:00, 20:00" label="Часто"></option>
+  </datalist>
 
   <div class="modal hidden" id="detail-modal">
     <div class="detail-card">
@@ -874,7 +832,7 @@
         const status = habit.done_today ? "done" : "open";
         const statusText = habit.done_today ? "готово" : (habit.missed_today ? "не сегодня" : "ждёт отметки");
         return `
-          <article class="today-habit panel">
+          <article class="today-habit panel" data-action="detail" data-id="${habit.id}">
             <div class="habit-progress-head">
               <div class="habit-progress-title">
                 <strong>${escapeHtml(habit.name)}</strong>
@@ -885,8 +843,6 @@
             <div class="rate-track"><div class="rate-fill" style="--width:${rate}%"></div></div>
             <div class="mark-actions">
               ${habit.done_today ? "" : `<button data-action="mark" data-id="${habit.id}">Выполнил</button>`}
-              ${habit.done_today || habit.missed_today ? "" : `<button class="ghost" data-action="miss" data-id="${habit.id}">Не сегодня</button>`}
-              <button class="ghost" data-action="detail" data-id="${habit.id}">Календарь</button>
               ${habit.done_today ? `<button class="danger" data-action="undo" data-id="${habit.id}">Отменить</button>` : ""}
             </div>
           </article>
@@ -955,16 +911,6 @@
       trendBadge.textContent = `${trendLabel(trend)} к прошлой неделе`;
       trendBadge.className = trendClass(trend);
 
-      const achievements = stats.achievements || [];
-      const unlocked = achievements.filter((item) => item.unlocked).length;
-      document.querySelector("#achievement-score").textContent = `${unlocked}/${achievements.length}`;
-      document.querySelector("#achievements").innerHTML = achievements.length ? achievements.map((item) => `
-        <div class="achievement ${item.unlocked ? "unlocked" : ""}">
-          <b>${escapeHtml(item.title)}</b>
-          <span>${escapeHtml(item.text)}</span>
-        </div>
-      `).join("") : '<div class="empty">Достижения появятся после первых отметок.</div>';
-
       document.querySelector("#week-strip").innerHTML = stats.dates.slice(-8, -1).map((date) => {
         const value = stats.daily_done[date] || 0;
         const possible = stats.daily_possible?.[date] || 0;
@@ -979,13 +925,12 @@
 
       const rows = stats.habit_rows || [];
       document.querySelector("#habit-stats").innerHTML = rows.length ? rows.map((habit) => `
-        <article class="habit-stat-card">
+        <article class="habit-stat-card" data-action="detail" data-id="${habit.id}">
           <div class="habit-progress-head">
             <div class="habit-progress-title">
               <strong>${escapeHtml(habit.name)}</strong>
               <span class="muted">${habit.period_completed}/${habit.possible} за 30 дней</span>
             </div>
-            <button class="ghost" data-action="detail" data-id="${habit.id}">Календарь</button>
           </div>
           <div class="rate-track"><div class="rate-fill" style="--width:${habit.completion_rate}%"></div></div>
           <div class="habit-meta">
@@ -1020,16 +965,10 @@
               <button class="danger" data-action="delete" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Удалить</button>
             </div>
             <div class="settings">
-              <div class="preset-row">
-                <button class="ghost" data-action="reminder-preset" data-id="${habit.id}" data-time="08:00">Утро</button>
-                <button class="ghost" data-action="reminder-preset" data-id="${habit.id}" data-time="13:00">День</button>
-                <button class="ghost" data-action="reminder-preset" data-id="${habit.id}" data-time="20:00">Вечер</button>
-                <button class="ghost" data-action="reminder-preset" data-id="${habit.id}" data-time="09:00, 14:00, 20:00">Часто</button>
-              </div>
               <form class="inline-form reminder-row" data-action="reminder-form" data-id="${habit.id}">
                 <input value="⏰" disabled>
-                <input name="reminder" placeholder="09:00 или 09:00, 21:00" value="${escapeHtml(habit.reminder?.reminder_time || "")}">
-                <button type="submit">${habit.reminder?.enabled ? "Обновить" : "Включить"}</button>
+                <input name="reminder" list="reminder-presets" placeholder="08:00 или 09:00, 21:00" value="${escapeHtml(habit.reminder?.reminder_time || "")}">
+                <button type="submit">Сохранить</button>
               </form>
               ${habit.reminder?.enabled ? `<button class="ghost" data-action="reminder-off" data-id="${habit.id}">Отключить напоминание</button>` : ""}
             </div>
@@ -1098,10 +1037,6 @@
         state.data = await request(`/api/habits/${id}/reminder/off`);
       }
 
-      if (action === "reminder-preset") {
-        state.data = await request(`/api/habits/${id}/reminder`, { reminder_time: button.dataset.time });
-      }
-
       state.stats = await request("/api/stats");
       renderToday(state.data, state.stats);
       renderManage(state.data);
@@ -1109,9 +1044,9 @@
     });
 
     todayList.addEventListener("click", async (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) return;
-      const { action, id } = button.dataset;
+      const target = event.target.closest("[data-action]");
+      if (!target || !todayList.contains(target)) return;
+      const { action, id } = target.dataset;
 
       if (action === "detail") {
         openDetail(id);
@@ -1134,8 +1069,8 @@
     });
 
     document.querySelector("#habit-stats").addEventListener("click", (event) => {
-      const button = event.target.closest('button[data-action="detail"]');
-      if (button) openDetail(button.dataset.id);
+      const target = event.target.closest('[data-action="detail"]');
+      if (target) openDetail(target.dataset.id);
     });
 
     document.querySelector("#detail-close").addEventListener("click", () => {

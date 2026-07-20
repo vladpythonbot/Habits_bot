@@ -330,44 +330,6 @@ async def api_stats(request: web.Request) -> web.Response:
         default=None,
     )
     total_completed = sum(habit[4] for habit in habits)
-    achievements = [
-        {
-            "id": "first_habit",
-            "title": "Старт",
-            "text": "Первая привычка создана",
-            "unlocked": len(habits) > 0,
-        },
-        {
-            "id": "first_done",
-            "title": "Первая отметка",
-            "text": "Есть первое выполнение",
-            "unlocked": total_completed > 0,
-        },
-        {
-            "id": "seven_streak",
-            "title": "7 дней подряд",
-            "text": "Серия держится неделю",
-            "unlocked": best_streak >= 7,
-        },
-        {
-            "id": "ten_done",
-            "title": "10 отметок",
-            "text": "Накоплено 10 выполнений",
-            "unlocked": total_completed >= 10,
-        },
-        {
-            "id": "perfect_day",
-            "title": "Идеальный день",
-            "text": "Все привычки закрыты за день",
-            "unlocked": perfect_days > 0,
-        },
-        {
-            "id": "week_80",
-            "title": "Сильная неделя",
-            "text": "80%+ за последние 7 дней",
-            "unlocked": week_rate >= 80,
-        },
-    ]
 
     return web.json_response({
         "today": today,
@@ -393,7 +355,6 @@ async def api_stats(request: web.Request) -> web.Response:
         "average_streak": average_streak,
         "best_habit": best_habit,
         "focus_habit": focus_habit,
-        "achievements": achievements,
         "habit_rows": habit_rows,
     })
 
