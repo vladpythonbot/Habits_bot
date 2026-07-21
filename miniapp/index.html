@@ -8,23 +8,23 @@
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f5f8f4;
+      --bg: #f6f7fb;
       --surface: #ffffff;
-      --surface-soft: #eef5f0;
-      --text: #202124;
-      --muted: #66736c;
-      --line: #dbe8de;
-      --ink: #202124;
-      --mint: #0d9b72;
-      --mint-soft: #e5f5ed;
-      --sky: #407ee7;
-      --sky-soft: #e9f0ff;
-      --coral: #d85b55;
-      --coral-soft: #fde9e5;
-      --sun: #c38316;
-      --sun-soft: #fff2d8;
+      --surface-soft: #eef1f6;
+      --text: #202331;
+      --muted: #667084;
+      --line: #dde3ed;
+      --ink: #202331;
+      --mint: #147d64;
+      --mint-soft: #e4f3ed;
+      --sky: #4059ad;
+      --sky-soft: #e8edff;
+      --coral: #ba4b54;
+      --coral-soft: #fae8e9;
+      --sun: #9b6a1d;
+      --sun-soft: #fbefd8;
       --danger: #bf3b4a;
-      --shadow: 0 12px 28px rgba(31, 59, 45, .08);
+      --shadow: 0 12px 28px rgba(28, 38, 64, .08);
     }
 
     * { box-sizing: border-box; }
@@ -411,7 +411,8 @@
       grid-template-columns: 1fr auto;
     }
 
-    input {
+    input,
+    select {
       width: 100%;
       min-width: 0;
       height: 42px;
@@ -421,6 +422,15 @@
       background: var(--surface);
       color: var(--text);
       font: inherit;
+    }
+
+    select {
+      appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position: calc(100% - 18px) 18px, calc(100% - 13px) 18px;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+      padding-right: 32px;
     }
 
     input:disabled {
@@ -472,6 +482,21 @@
 
     .reminder-row {
       grid-template-columns: 50px 1fr auto;
+    }
+
+    .goal-row {
+      grid-template-columns: 50px 1fr;
+      align-items: center;
+    }
+
+    .archive-head {
+      margin-top: 16px;
+    }
+
+    .privacy-panel {
+      margin-top: 16px;
+      display: grid;
+      gap: 10px;
     }
 
     .empty,
@@ -527,6 +552,12 @@
     .calendar-day.done {
       background: var(--mint);
       border-color: var(--mint);
+    }
+
+    .calendar-day.skipped {
+      background: transparent;
+      border-style: dashed;
+      opacity: .55;
     }
 
     .calendar-day.future {
@@ -689,6 +720,21 @@
       <div class="list" id="list">
         <div class="empty">Загрузка...</div>
       </div>
+
+      <div class="section-head archive-head">
+        <h2>Архив</h2>
+        <span class="muted">скрытые привычки</span>
+      </div>
+      <div class="list" id="archive-list"></div>
+
+      <div class="panel privacy-panel">
+        <div class="section-head">
+          <h2>Приватность</h2>
+          <span class="muted" id="privacy-user">Telegram ID</span>
+        </div>
+        <p class="muted">Данные хранятся только для работы бота: привычки, отметки, пропуски и напоминания.</p>
+        <button class="danger" id="delete-data" type="button">Удалить мои данные</button>
+      </div>
     </section>
   </main>
 
@@ -713,6 +759,8 @@
         <span><b id="detail-streak">0</b>серия</span>
         <span><b id="detail-week">0/0</b>7 дней</span>
         <span><b id="detail-missed">0</b>пропусков</span>
+        <span><b id="detail-best">0</b>лучшая серия</span>
+        <span><b id="detail-total">0</b>всего</span>
       </div>
       <div class="calendar-grid" id="detail-calendar"></div>
     </div>
@@ -734,9 +782,12 @@
     const manageView = document.querySelector("#manage-view");
     const todayList = document.querySelector("#today-list");
     const list = document.querySelector("#list");
+    const archiveList = document.querySelector("#archive-list");
     const form = document.querySelector("#add-form");
     const input = document.querySelector("#habit-name");
     const detailModal = document.querySelector("#detail-modal");
+    const deleteDataButton = document.querySelector("#delete-data");
+    const privacyUser = document.querySelector("#privacy-user");
 
     async function request(path, payload = {}) {
       const response = await fetch(path, {
@@ -803,6 +854,31 @@
       return new Map((items || []).map((item) => [Number(item.id), item]));
     }
 
+    function goalValue(habit) {
+      if (habit.goal_type === "weekly") return `weekly_${habit.goal_value || 3}`;
+      return habit.goal_type || "daily";
+    }
+
+    function goalPayload(value) {
+      if (value.startsWith("weekly_")) {
+        return { goal_type: "weekly", goal_value: Number(value.replace("weekly_", "")) || 3 };
+      }
+      if (value === "weekdays") return { goal_type: "weekdays", goal_value: 5 };
+      return { goal_type: "daily", goal_value: 7 };
+    }
+
+    function goalOptions(selected) {
+      const options = [
+        ["daily", "Каждый день"],
+        ["weekdays", "По будням"],
+        ["weekly_3", "3 раза в неделю"],
+        ["weekly_5", "5 раз в неделю"],
+      ];
+      return options.map(([value, label]) => (
+        `<option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>`
+      )).join("");
+    }
+
     async function refreshAll() {
       const [data, stats] = await Promise.all([
         request("/api/state"),
@@ -836,15 +912,11 @@
             <div class="habit-progress-head">
               <div class="habit-progress-title">
                 <strong>${escapeHtml(habit.name)}</strong>
-                <span class="muted">серия ${habit.streak} · ${rate}% за 30 дней</span>
+                <span class="muted">${escapeHtml(habit.goal_text)} · серия ${habit.streak} · ${rate}% за 30 дней</span>
               </div>
               <span class="status ${status}">${statusText}</span>
             </div>
             <div class="rate-track"><div class="rate-fill" style="--width:${rate}%"></div></div>
-            <div class="mark-actions">
-              ${habit.done_today ? "" : `<button data-action="mark" data-id="${habit.id}">Выполнил</button>`}
-              ${habit.done_today ? `<button class="danger" data-action="undo" data-id="${habit.id}">Отменить</button>` : ""}
-            </div>
           </article>
         `;
       }).join("");
@@ -854,13 +926,15 @@
       const habit = (state.stats?.habit_rows || []).find((item) => Number(item.id) === Number(habitId));
       if (!habit) return;
       document.querySelector("#detail-title").textContent = habit.name;
-      document.querySelector("#detail-subtitle").textContent = `${habit.period_completed}/${habit.possible} за 30 дней`;
+      document.querySelector("#detail-subtitle").textContent = `${habit.goal_text} · ${habit.period_completed}/${habit.possible} за 30 дней`;
       document.querySelector("#detail-rate").textContent = `${habit.completion_rate}%`;
       document.querySelector("#detail-streak").textContent = habit.streak;
       document.querySelector("#detail-week").textContent = `${habit.last_7_completed}/${habit.last_7_possible}`;
       document.querySelector("#detail-missed").textContent = habit.missed_count;
+      document.querySelector("#detail-best").textContent = habit.best_streak || habit.streak || 0;
+      document.querySelector("#detail-total").textContent = habit.total_completed || 0;
       document.querySelector("#detail-calendar").innerHTML = habit.calendar.map((day) => {
-        const className = `calendar-day ${day.done ? "done" : ""} ${day.available ? "" : "future"}`;
+        const className = `calendar-day ${day.done ? "done" : ""} ${day.expected ? "" : "skipped"} ${day.available ? "" : "future"}`;
         return `<span class="${className}" title="${day.date}"></span>`;
       }).join("");
       detailModal.classList.remove("hidden");
@@ -880,7 +954,7 @@
       document.querySelector("#today").textContent = stats.today;
       document.querySelector("#rate").textContent = `${rate}%`;
       document.querySelector("#ring").style.setProperty("--value", `${Math.round(rate * 3.6)}deg`);
-      document.querySelector("#today-score").textContent = `${stats.today_done}/${stats.habits_count} сегодня`;
+      document.querySelector("#today-score").textContent = `${stats.today_done}/${stats.today_possible || stats.habits_count} сегодня`;
       document.querySelector("#week-score").textContent = `${stats.week_rate || 0}% за 7 дней`;
       document.querySelector("#streak-score").textContent = stats.best_streak || 0;
       document.querySelector("#month-score").textContent = `${monthRate}%`;
@@ -890,7 +964,7 @@
 
       const title = rate >= 100 ? "Сегодня закрыто" : rate >= 50 ? "День в процессе" : "Сегодня нужен старт";
       const copy = stats.habits_count
-        ? `Отмечено ${stats.today_done} из ${stats.habits_count}. За 30 дней общий ритм ${monthRate}%.`
+        ? `Отмечено ${stats.today_done} из ${stats.today_possible || stats.habits_count}. За 30 дней общий ритм ${monthRate}%.`
         : "Добавь привычку во вкладке управления, а отметки делай в боте.";
       document.querySelector("#summary-title").textContent = title;
       document.querySelector("#summary-copy").textContent = copy;
@@ -929,7 +1003,7 @@
           <div class="habit-progress-head">
             <div class="habit-progress-title">
               <strong>${escapeHtml(habit.name)}</strong>
-              <span class="muted">${habit.period_completed}/${habit.possible} за 30 дней</span>
+              <span class="muted">${habit.goal_text} · ${habit.period_completed}/${habit.possible} за 30 дней</span>
             </div>
           </div>
           <div class="rate-track"><div class="rate-fill" style="--width:${habit.completion_rate}%"></div></div>
@@ -937,34 +1011,40 @@
             <span><b>${habit.completion_rate}%</b>ритм</span>
             <span><b>${habit.streak}</b>серия</span>
             <span><b>${habit.last_7_completed}/${habit.last_7_possible}</b>7 дней</span>
-            <span><b>${habit.missed_count}</b>пропусков</span>
+            <span><b>${habit.best_streak || 0}</b>лучшая</span>
           </div>
         </article>
       `).join("") : '<div class="empty">Нет привычек для анализа.</div>';
     }
 
     function renderManage(data) {
-      if (!data.habits.length) {
-        list.innerHTML = '<div class="empty">Пока нет привычек. Добавь первую здесь, а отмечай в боте.</div>';
-        return;
-      }
+      privacyUser.textContent = data.user?.id ? `ID ${data.user.id}` : "Telegram ID";
 
-      list.innerHTML = data.habits.map((habit) => {
+      if (!data.habits.length) {
+        list.innerHTML = '<div class="empty">Пока нет активных привычек. Добавь первую здесь, а отмечай в боте.</div>';
+      } else {
+        list.innerHTML = data.habits.map((habit) => {
         const reminderText = habit.reminder?.enabled ? `Напоминание: ${escapeHtml(habit.reminder.reminder_time)}` : "Напоминание выключено";
         return `
           <article class="habit-card">
             <div class="item-top">
               <div class="item-title">
                 <h2 class="habit-name">${escapeHtml(habit.name)}</h2>
-                <p class="muted">Серия: ${habit.streak} · всего: ${habit.total_completed} · ${reminderText}</p>
+                <p class="muted">${escapeHtml(habit.goal_text)} · серия: ${habit.streak} · всего: ${habit.total_completed} · ${reminderText}</p>
               </div>
               <span class="status ${habit.done_today ? "done" : "open"}">${habit.done_today ? "сегодня отмечено" : "ждёт отметки"}</span>
             </div>
             <div class="actions">
               <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Переименовать</button>
-              <button class="danger" data-action="delete" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Удалить</button>
+              <button class="ghost" data-action="archive" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">В архив</button>
             </div>
             <div class="settings">
+              <div class="inline-form goal-row">
+                <input value="Цель" disabled>
+                <select data-action="goal" data-id="${habit.id}">
+                  ${goalOptions(goalValue(habit))}
+                </select>
+              </div>
               <form class="inline-form reminder-row" data-action="reminder-form" data-id="${habit.id}">
                 <input value="⏰" disabled>
                 <input name="reminder" list="reminder-presets" placeholder="08:00 или 09:00, 21:00" value="${escapeHtml(habit.reminder?.reminder_time || "")}">
@@ -974,7 +1054,24 @@
             </div>
           </article>
         `;
-      }).join("");
+        }).join("");
+      }
+
+      const archived = data.archived_habits || [];
+      archiveList.innerHTML = archived.length ? archived.map((habit) => `
+        <article class="habit-card">
+          <div class="item-top">
+            <div class="item-title">
+              <h2 class="habit-name">${escapeHtml(habit.name)}</h2>
+              <p class="muted">${escapeHtml(habit.goal_text)} · всего: ${habit.total_completed}</p>
+            </div>
+            <span class="status">архив</span>
+          </div>
+          <div class="actions">
+            <button class="ghost" data-action="restore" data-id="${habit.id}">Вернуть</button>
+          </div>
+        </article>
+      `).join("") : '<div class="empty">Архив пуст.</div>';
     }
 
     async function refresh() {
@@ -1017,6 +1114,16 @@
       renderStats(state.stats);
     });
 
+    list.addEventListener("change", async (event) => {
+      const select = event.target.closest('select[data-action="goal"]');
+      if (!select) return;
+      state.data = await request(`/api/habits/${select.dataset.id}/goal`, goalPayload(select.value));
+      state.stats = await request("/api/stats");
+      renderToday(state.data, state.stats);
+      renderManage(state.data);
+      renderStats(state.stats);
+    });
+
     list.addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
@@ -1028,15 +1135,34 @@
         state.data = await request(`/api/habits/${id}/rename`, { name: nextName.trim() });
       }
 
-      if (action === "delete") {
-        if (!confirm(`Удалить привычку "${name}"? История тоже исчезнет.`)) return;
-        state.data = await request(`/api/habits/${id}/delete`);
+      if (action === "archive") {
+        state.data = await request(`/api/habits/${id}/archive`);
       }
 
       if (action === "reminder-off") {
         state.data = await request(`/api/habits/${id}/reminder/off`);
       }
 
+      state.stats = await request("/api/stats");
+      renderToday(state.data, state.stats);
+      renderManage(state.data);
+      renderStats(state.stats);
+    });
+
+    archiveList.addEventListener("click", async (event) => {
+      const button = event.target.closest('button[data-action="restore"]');
+      if (!button) return;
+      state.data = await request(`/api/habits/${button.dataset.id}/restore`);
+      state.stats = await request("/api/stats");
+      renderToday(state.data, state.stats);
+      renderManage(state.data);
+      renderStats(state.stats);
+    });
+
+    deleteDataButton.addEventListener("click", async () => {
+      if (!confirm("Удалить все привычки, отметки, пропуски и напоминания?")) return;
+      if (!confirm("Это действие нельзя отменить. Удалить данные окончательно?")) return;
+      state.data = await request("/api/privacy/delete-data");
       state.stats = await request("/api/stats");
       renderToday(state.data, state.stats);
       renderManage(state.data);

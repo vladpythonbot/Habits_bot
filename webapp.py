@@ -9,10 +9,12 @@ from aiohttp import web
 
 from bot import TOKEN
 from db import (
+    archive_habit,
     create_habit_group,
     date_range,
     delete_habit_group,
     delete_habit_from_db,
+    delete_user_data,
     disable_habit_reminder,
     get_habit_groups,
     get_habit_reminder,
@@ -22,12 +24,14 @@ from db import (
     mark_habit_completed,
     parse_date,
     record_habit_miss,
+    restore_habit,
     save_habit,
     set_habit_group,
     set_habit_reminder,
     today_str,
     unmark_habit_completed,
     update_habit_group_emoji,
+    update_habit_goal,
     update_habit_name,
 )
 
@@ -68,7 +72,10 @@ def verify_init_data(init_data: str) -> dict:
 
 
 async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
-    habit_id, name, created_date, streak, total_completed, last_completed, goal_days, group_id = habit
+    habit_id, name, created_date, streak, total_completed, last_completed, goal_days, group_id, *extra = habit
+    goal_type = extra[0] if len(extra) > 0 else "daily"
+    goal_value = int(extra[1] if len(extra) > 1 else 7)
+    archived_at = extra[2] if len(extra) > 2 else None
     today = today_str()
     reminder = await get_habit_reminder(user_id, habit_id)
     return {
@@ -78,7 +85,11 @@ async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
         "streak": streak,
         "total_completed": total_completed,
         "goal_days": goal_days,
+        "goal_type": goal_type,
+        "goal_value": goal_value,
+        "goal_text": goal_label(goal_type, goal_value),
         "group_id": group_id,
+        "archived_at": archived_at,
         "done_today": last_completed == today,
         "missed_today": habit_id in missed_ids,
         "reminder": reminder,
@@ -93,6 +104,66 @@ def group_payload(group) -> dict:
         "count": count,
         "emoji": emoji,
     }
+
+
+def goal_label(goal_type: str | None, goal_value: int | None) -> str:
+    if goal_type == "weekdays":
+        return "По будням"
+    if goal_type == "weekly":
+        value = goal_value or 3
+        return f"{value} раз в неделю"
+    return "Каждый день"
+
+
+def expected_dates_for_goal(created_date: str, goal_type: str | None, goal_value: int | None, dates: list[str]) -> set[str]:
+    created = parse_date(created_date)
+    active_dates = [date for date in dates if parse_date(date) >= created]
+    if goal_type == "weekdays":
+        return {date for date in active_dates if parse_date(date).weekday() < 5}
+    if goal_type == "weekly":
+        weekly_dates: dict[tuple[int, int], list[str]] = {}
+        for date in active_dates:
+            parsed = parse_date(date)
+            iso_year, iso_week, _ = parsed.isocalendar()
+            weekly_dates.setdefault((iso_year, iso_week), []).append(date)
+        limit = max(1, min(7, int(goal_value or 3)))
+        expected: set[str] = set()
+        for week_dates in weekly_dates.values():
+            expected.update(week_dates[:limit])
+        return expected
+    return set(active_dates)
+
+
+def count_goal_completions(log_dates: set[str], expected_dates: set[str], goal_type: str | None, goal_value: int | None) -> int:
+    if goal_type != "weekly":
+        return len(log_dates.intersection(expected_dates))
+
+    limit = max(1, min(7, int(goal_value or 3)))
+    logs_by_week: dict[tuple[int, int], int] = {}
+    expected_by_week: dict[tuple[int, int], int] = {}
+    for date in log_dates:
+        parsed = parse_date(date)
+        iso_year, iso_week, _ = parsed.isocalendar()
+        logs_by_week[(iso_year, iso_week)] = logs_by_week.get((iso_year, iso_week), 0) + 1
+    for date in expected_dates:
+        parsed = parse_date(date)
+        iso_year, iso_week, _ = parsed.isocalendar()
+        expected_by_week[(iso_year, iso_week)] = expected_by_week.get((iso_year, iso_week), 0) + 1
+    return sum(min(logs_by_week.get(week, 0), possible, limit) for week, possible in expected_by_week.items())
+
+
+def best_consecutive_days(log_dates: set[str]) -> int:
+    if not log_dates:
+        return 0
+    ordered = sorted(parse_date(date) for date in log_dates)
+    best = current = 1
+    for index in range(1, len(ordered)):
+        if (ordered[index] - ordered[index - 1]).days == 1:
+            current += 1
+        else:
+            current = 1
+        best = max(best, current)
+    return best
 
 
 async def get_telegram_user(request: web.Request) -> dict:
@@ -127,9 +198,11 @@ async def api_state(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     user_id = int(user["id"])
     habits = await get_user_habits(user_id)
+    archived_habits = await get_user_habits(user_id, archived_only=True)
     groups = await get_habit_groups(user_id)
     missed_ids = await get_missed_habit_ids(user_id)
     items = [await habit_payload(user_id, habit, missed_ids) for habit in habits]
+    archived_items = [await habit_payload(user_id, habit, set()) for habit in archived_habits]
     done_count = sum(1 for item in items if item["done_today"])
 
     return web.json_response({
@@ -141,6 +214,7 @@ async def api_state(request: web.Request) -> web.Response:
             "open": len([item for item in items if not item["done_today"] and not item["missed_today"]]),
         },
         "habits": items,
+        "archived_habits": archived_items,
         "groups": [group_payload(group) for group in groups],
     })
 
@@ -178,6 +252,40 @@ async def api_delete_habit(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     habit_id = int(request.match_info["habit_id"])
     await delete_habit_from_db(int(user["id"]), habit_id)
+    return await api_state(request)
+
+
+async def api_archive_habit(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    habit_id = int(request.match_info["habit_id"])
+    archived = await archive_habit(int(user["id"]), habit_id)
+    if not archived:
+        raise web.HTTPNotFound(text="Habit not found")
+    return await api_state(request)
+
+
+async def api_restore_habit(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    habit_id = int(request.match_info["habit_id"])
+    restored = await restore_habit(int(user["id"]), habit_id)
+    if not restored:
+        raise web.HTTPNotFound(text="Habit not found")
+    return await api_state(request)
+
+
+async def api_set_goal(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    payload = await get_json_payload(request)
+    habit_id = int(request.match_info["habit_id"])
+    goal_type = str(payload.get("goal_type", "daily")).strip()
+    raw_value = payload.get("goal_value")
+    try:
+        goal_value = int(raw_value) if raw_value is not None else None
+    except (TypeError, ValueError):
+        goal_value = None
+    updated = await update_habit_goal(int(user["id"]), habit_id, goal_type, goal_value)
+    if not updated:
+        raise web.HTTPNotFound(text="Habit not found")
     return await api_state(request)
 
 
@@ -261,30 +369,50 @@ async def api_stats(request: web.Request) -> web.Response:
 
     possible = 0
     daily_possible = {date: 0 for date in completed_dates}
+    today_possible = 0
     habit_rows = []
     last_7_dates = completed_dates[-7:]
     previous_7_dates = completed_dates[-14:-7]
     for habit in habits:
-        habit_id, name, created_date, streak, total_completed, last_completed, goal_days, group_id = habit
-        created = parse_date(habit[2])
-        habit_possible = 0
+        habit_id, name, created_date, streak, total_completed, last_completed, goal_days, group_id, *extra = habit
+        goal_type = extra[0] if len(extra) > 0 else "daily"
+        goal_value = int(extra[1] if len(extra) > 1 else 7)
+        expected_dates = expected_dates_for_goal(created_date, goal_type, goal_value, dates)
+        completed_expected_dates = expected_dates.intersection(completed_dates)
+        habit_possible = len(completed_expected_dates)
         for date in completed_dates:
-            if parse_date(date) >= created:
-                habit_possible += 1
+            if date in expected_dates:
                 daily_possible[date] += 1
                 possible += 1
-        habit_period_done = len(logs_by_habit.get(habit_id, set()).intersection(completed_dates))
-        habit_last_7_possible = sum(1 for date in last_7_dates if parse_date(date) >= created)
-        habit_last_7_done = len(logs_by_habit.get(habit_id, set()).intersection(last_7_dates))
-        habit_rate = round(habit_period_done / habit_possible * 100) if habit_possible else 0
+        if today in expected_dates:
+            today_possible += 1
         habit_log_dates = logs_by_habit.get(habit_id, set())
+        habit_period_done = count_goal_completions(
+            habit_log_dates.intersection(completed_dates),
+            completed_expected_dates,
+            goal_type,
+            goal_value,
+        )
+        habit_last_7_expected = expected_dates.intersection(last_7_dates)
+        habit_last_7_possible = len(habit_last_7_expected)
+        habit_last_7_done = count_goal_completions(
+            habit_log_dates.intersection(last_7_dates),
+            habit_last_7_expected,
+            goal_type,
+            goal_value,
+        )
+        habit_rate = round(habit_period_done / habit_possible * 100) if habit_possible else 0
         habit_rows.append({
             "id": habit_id,
             "name": name,
             "created_date": created_date,
             "streak": streak,
+            "best_streak": best_consecutive_days(habit_log_dates),
             "total_completed": total_completed,
             "last_completed_date": last_completed,
+            "goal_type": goal_type,
+            "goal_value": goal_value,
+            "goal_text": goal_label(goal_type, goal_value),
             "done_today": today in logs_by_habit.get(habit_id, set()),
             "period_completed": habit_period_done,
             "possible": habit_possible,
@@ -297,7 +425,8 @@ async def api_stats(request: web.Request) -> web.Response:
                 {
                     "date": date,
                     "done": date in habit_log_dates,
-                    "available": parse_date(date) >= created,
+                    "available": parse_date(date) >= parse_date(created_date),
+                    "expected": date in expected_dates,
                 }
                 for date in dates
             ],
@@ -320,7 +449,7 @@ async def api_stats(request: web.Request) -> web.Response:
         for date in completed_dates
         if daily_possible.get(date, 0) > 0 and daily_done.get(date, 0) >= daily_possible.get(date, 0)
     )
-    today_rate = round(daily_done.get(today, 0) / len(habits) * 100) if habits else 0
+    today_rate = round(daily_done.get(today, 0) / today_possible * 100) if today_possible else 0
     best_streak = max((habit[3] for habit in habits), default=0)
     average_streak = round(sum(habit[3] for habit in habits) / len(habits), 1) if habits else 0
     best_habit = habit_rows[0] if habit_rows else None
@@ -340,6 +469,7 @@ async def api_stats(request: web.Request) -> web.Response:
         "completion_rate": completion_rate,
         "missed_days": len(missed_today),
         "today_done": daily_done.get(today, 0),
+        "today_possible": today_possible,
         "today_rate": today_rate,
         "dates": dates,
         "daily_done": daily_done,
@@ -382,6 +512,19 @@ async def api_undo(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
+async def api_delete_user_data(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    await delete_user_data(int(user["id"]))
+    return web.json_response({
+        "user": {"id": int(user["id"]), "first_name": user.get("first_name", "")},
+        "today": today_str(),
+        "summary": {"total": 0, "done": 0, "open": 0},
+        "habits": [],
+        "archived_habits": [],
+        "groups": [],
+    })
+
+
 def create_web_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", index)
@@ -392,6 +535,9 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits", api_add_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/rename", api_rename_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/delete", api_delete_habit)
+    app.router.add_post("/api/habits/{habit_id:\\d+}/archive", api_archive_habit)
+    app.router.add_post("/api/habits/{habit_id:\\d+}/restore", api_restore_habit)
+    app.router.add_post("/api/habits/{habit_id:\\d+}/goal", api_set_goal)
     app.router.add_post("/api/habits/{habit_id:\\d+}/group", api_set_habit_group)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder", api_set_reminder)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder/off", api_disable_reminder)
@@ -401,6 +547,7 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits/{habit_id:\\d+}/mark", api_mark)
     app.router.add_post("/api/habits/{habit_id:\\d+}/miss", api_miss)
     app.router.add_post("/api/habits/{habit_id:\\d+}/undo", api_undo)
+    app.router.add_post("/api/privacy/delete-data", api_delete_user_data)
     app.router.add_static("/static", WEBAPP_DIR, show_index=False)
     return app
 

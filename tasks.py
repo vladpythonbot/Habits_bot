@@ -4,7 +4,7 @@ from datetime import datetime
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot import bot
-from db import get_all_users_with_habits, get_user_habits
+from db import get_all_users_with_habits, get_missed_habit_ids, get_user_habits
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +24,17 @@ async def daily_reminder_and_reset():
         if not habits:
             continue
 
+        missed_ids = await get_missed_habit_ids(user_id)
         unmarked = []
         for habit in habits:
-            habit_id, habit_name, created_date, _, total_completed, last_date, _, _ = habit
+            habit_id, habit_name, created_date, _, total_completed, last_date, _, _, *extra = habit
+            goal_type = extra[0] if extra else "daily"
+            if goal_type == "weekdays" and datetime.now().weekday() >= 5:
+                continue
+            if goal_type == "weekly":
+                continue
 
-            if last_date != today:
+            if last_date != today and habit_id not in missed_ids:
                 unmarked.append((habit_id, habit_name))
 
         if not unmarked:
