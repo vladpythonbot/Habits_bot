@@ -129,7 +129,43 @@ async def init_db():
             WHERE last_completed_date IS NOT NULL
         """)
 
+        await delete_archived_habits(db)
+
         await db.commit()
+
+
+async def delete_archived_habits(db):
+    await db.execute("""
+        DELETE FROM habit_logs
+        WHERE EXISTS (
+            SELECT 1
+            FROM habits
+            WHERE habits.id = habit_logs.habit_id
+              AND habits.user_id = habit_logs.user_id
+              AND habits.archived_at IS NOT NULL
+        )
+    """)
+    await db.execute("""
+        DELETE FROM habit_misses
+        WHERE EXISTS (
+            SELECT 1
+            FROM habits
+            WHERE habits.id = habit_misses.habit_id
+              AND habits.user_id = habit_misses.user_id
+              AND habits.archived_at IS NOT NULL
+        )
+    """)
+    await db.execute("""
+        DELETE FROM habit_reminders
+        WHERE EXISTS (
+            SELECT 1
+            FROM habits
+            WHERE habits.id = habit_reminders.habit_id
+              AND habits.user_id = habit_reminders.user_id
+              AND habits.archived_at IS NOT NULL
+        )
+    """)
+    await db.execute("DELETE FROM habits WHERE archived_at IS NOT NULL")
 
 
 async def save_habit(
@@ -161,17 +197,11 @@ async def get_user_habits(
     user_id: int,
     group_id: int | None = None,
     ungrouped_only: bool = False,
-    include_archived: bool = False,
-    archived_only: bool = False,
 ):
     await refresh_missed_streaks(user_id)
 
-    conditions = ["user_id = ?"]
+    conditions = ["user_id = ?", "archived_at IS NULL"]
     params: list[int] = [user_id]
-    if archived_only:
-        conditions.append("archived_at IS NOT NULL")
-    elif not include_archived:
-        conditions.append("archived_at IS NULL")
     if group_id is not None:
         conditions.append("group_id = ?")
         params.append(group_id)
@@ -181,7 +211,7 @@ async def get_user_habits(
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(f"""
             SELECT id, habit_name, created_date, streak, total_completed, last_completed_date, goal_days, group_id,
-                   goal_type, goal_value, archived_at
+                   goal_type, goal_value
             FROM habits
             WHERE {' AND '.join(conditions)}
             ORDER BY created_date ASC, id ASC
@@ -391,28 +421,6 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
     return True
 
 
-async def archive_habit(user_id: int, habit_id: int) -> bool:
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            UPDATE habits
-            SET archived_at = ?
-            WHERE id = ? AND user_id = ? AND archived_at IS NULL
-        """, (datetime.now().isoformat(timespec="seconds"), habit_id, user_id))
-        await db.commit()
-        return cursor.rowcount > 0
-
-
-async def restore_habit(user_id: int, habit_id: int) -> bool:
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            UPDATE habits
-            SET archived_at = NULL
-            WHERE id = ? AND user_id = ? AND archived_at IS NOT NULL
-        """, (habit_id, user_id))
-        await db.commit()
-        return cursor.rowcount > 0
-
-
 async def update_habit_goal(user_id: int, habit_id: int, goal_type: str, goal_value: int | None = None) -> bool:
     normalized_type, normalized_value = normalize_habit_goal(goal_type, goal_value)
     async with aiosqlite.connect(DB_NAME) as db:
@@ -424,18 +432,6 @@ async def update_habit_goal(user_id: int, habit_id: int, goal_type: str, goal_va
         """, (normalized_type, normalized_value, habit_id, user_id))
         await db.commit()
         return cursor.rowcount > 0
-
-
-async def delete_user_data(user_id: int) -> bool:
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("DELETE FROM habit_logs WHERE user_id = ?", (user_id,))
-        await db.execute("DELETE FROM habit_misses WHERE user_id = ?", (user_id,))
-        await db.execute("DELETE FROM habit_reminders WHERE user_id = ?", (user_id,))
-        await db.execute("DELETE FROM habits WHERE user_id = ?", (user_id,))
-        await db.execute("DELETE FROM habit_groups WHERE user_id = ?", (user_id,))
-        await db.commit()
-    return True
-
 
 
 async def record_habit_miss(user_id: int, habit_id: int, missed_date: str | None = None) -> bool:

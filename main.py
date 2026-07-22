@@ -36,9 +36,14 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone="Europe/Kyiv")
 
-    scheduler.add_job(daily_reminder,
-                      "cron", hour="9,12,15,18,21", minute=0,
-                      id="daily_reminder")
+    scheduler.add_job(
+        daily_reminder,
+        "interval",
+        minutes=1,
+        id="daily_reminder",
+        max_instances=1,
+        coalesce=True,
+    )
 
     scheduler.start()
     await start_web_app()

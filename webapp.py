@@ -9,14 +9,9 @@ from aiohttp import web
 
 from bot import TOKEN
 from db import (
-    archive_habit,
-    create_habit_group,
     date_range,
-    delete_habit_group,
     delete_habit_from_db,
-    delete_user_data,
     disable_habit_reminder,
-    get_habit_groups,
     get_habit_reminder,
     get_habit_logs,
     get_missed_habit_ids,
@@ -24,13 +19,10 @@ from db import (
     mark_habit_completed,
     parse_date,
     record_habit_miss,
-    restore_habit,
     save_habit,
-    set_habit_group,
     set_habit_reminder,
     today_str,
     unmark_habit_completed,
-    update_habit_group_emoji,
     update_habit_goal,
     update_habit_name,
 )
@@ -72,10 +64,9 @@ def verify_init_data(init_data: str) -> dict:
 
 
 async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
-    habit_id, name, created_date, streak, total_completed, last_completed, goal_days, group_id, *extra = habit
+    habit_id, name, created_date, streak, total_completed, last_completed, goal_days, _, *extra = habit
     goal_type = extra[0] if len(extra) > 0 else "daily"
     goal_value = int(extra[1] if len(extra) > 1 else 7)
-    archived_at = extra[2] if len(extra) > 2 else None
     today = today_str()
     reminder = await get_habit_reminder(user_id, habit_id)
     return {
@@ -88,21 +79,9 @@ async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
         "goal_type": goal_type,
         "goal_value": goal_value,
         "goal_text": goal_label(goal_type, goal_value),
-        "group_id": group_id,
-        "archived_at": archived_at,
         "done_today": last_completed == today,
         "missed_today": habit_id in missed_ids,
         "reminder": reminder,
-    }
-
-
-def group_payload(group) -> dict:
-    group_id, name, count, emoji = group
-    return {
-        "id": group_id,
-        "name": name,
-        "count": count,
-        "emoji": emoji,
     }
 
 
@@ -198,11 +177,8 @@ async def api_state(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     user_id = int(user["id"])
     habits = await get_user_habits(user_id)
-    archived_habits = await get_user_habits(user_id, archived_only=True)
-    groups = await get_habit_groups(user_id)
     missed_ids = await get_missed_habit_ids(user_id)
     items = [await habit_payload(user_id, habit, missed_ids) for habit in habits]
-    archived_items = [await habit_payload(user_id, habit, set()) for habit in archived_habits]
     done_count = sum(1 for item in items if item["done_today"])
 
     return web.json_response({
@@ -214,8 +190,6 @@ async def api_state(request: web.Request) -> web.Response:
             "open": len([item for item in items if not item["done_today"] and not item["missed_today"]]),
         },
         "habits": items,
-        "archived_habits": archived_items,
-        "groups": [group_payload(group) for group in groups],
     })
 
 
@@ -255,24 +229,6 @@ async def api_delete_habit(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
-async def api_archive_habit(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    habit_id = int(request.match_info["habit_id"])
-    archived = await archive_habit(int(user["id"]), habit_id)
-    if not archived:
-        raise web.HTTPNotFound(text="Habit not found")
-    return await api_state(request)
-
-
-async def api_restore_habit(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    habit_id = int(request.match_info["habit_id"])
-    restored = await restore_habit(int(user["id"]), habit_id)
-    if not restored:
-        raise web.HTTPNotFound(text="Habit not found")
-    return await api_state(request)
-
-
 async def api_set_goal(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     payload = await get_json_payload(request)
@@ -286,18 +242,6 @@ async def api_set_goal(request: web.Request) -> web.Response:
     updated = await update_habit_goal(int(user["id"]), habit_id, goal_type, goal_value)
     if not updated:
         raise web.HTTPNotFound(text="Habit not found")
-    return await api_state(request)
-
-
-async def api_set_habit_group(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    payload = await get_json_payload(request)
-    habit_id = int(request.match_info["habit_id"])
-    group_value = payload.get("group_id")
-    group_id = None if group_value in (None, "", "none") else int(group_value)
-    updated = await set_habit_group(int(user["id"]), habit_id, group_id)
-    if not updated:
-        raise web.HTTPNotFound(text="Habit or group not found")
     return await api_state(request)
 
 
@@ -318,37 +262,6 @@ async def api_disable_reminder(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     habit_id = int(request.match_info["habit_id"])
     await disable_habit_reminder(int(user["id"]), habit_id)
-    return await api_state(request)
-
-
-async def api_create_group(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    payload = await get_json_payload(request)
-    name = str(payload.get("name", "")).strip()
-    emoji = str(payload.get("emoji", "🎯")).strip()[:8] or "🎯"
-    if not name:
-        raise web.HTTPBadRequest(text="Group name is required")
-    created, _ = await create_habit_group(int(user["id"]), name, emoji)
-    if not created:
-        raise web.HTTPBadRequest(text="Group already exists")
-    return await api_state(request)
-
-
-async def api_update_group_emoji(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    payload = await get_json_payload(request)
-    group_id = int(request.match_info["group_id"])
-    emoji = str(payload.get("emoji", "🎯")).strip()[:8] or "🎯"
-    updated = await update_habit_group_emoji(int(user["id"]), group_id, emoji)
-    if not updated:
-        raise web.HTTPNotFound(text="Group not found")
-    return await api_state(request)
-
-
-async def api_delete_group(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    group_id = int(request.match_info["group_id"])
-    await delete_habit_group(int(user["id"]), group_id)
     return await api_state(request)
 
 
@@ -374,7 +287,7 @@ async def api_stats(request: web.Request) -> web.Response:
     last_7_dates = completed_dates[-7:]
     previous_7_dates = completed_dates[-14:-7]
     for habit in habits:
-        habit_id, name, created_date, streak, total_completed, last_completed, goal_days, group_id, *extra = habit
+        habit_id, name, created_date, streak, total_completed, last_completed, goal_days, _, *extra = habit
         goal_type = extra[0] if len(extra) > 0 else "daily"
         goal_value = int(extra[1] if len(extra) > 1 else 7)
         expected_dates = expected_dates_for_goal(created_date, goal_type, goal_value, dates)
@@ -512,19 +425,6 @@ async def api_undo(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
-async def api_delete_user_data(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    await delete_user_data(int(user["id"]))
-    return web.json_response({
-        "user": {"id": int(user["id"]), "first_name": user.get("first_name", "")},
-        "today": today_str(),
-        "summary": {"total": 0, "done": 0, "open": 0},
-        "habits": [],
-        "archived_habits": [],
-        "groups": [],
-    })
-
-
 def create_web_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/", index)
@@ -535,19 +435,12 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits", api_add_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/rename", api_rename_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/delete", api_delete_habit)
-    app.router.add_post("/api/habits/{habit_id:\\d+}/archive", api_archive_habit)
-    app.router.add_post("/api/habits/{habit_id:\\d+}/restore", api_restore_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/goal", api_set_goal)
-    app.router.add_post("/api/habits/{habit_id:\\d+}/group", api_set_habit_group)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder", api_set_reminder)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder/off", api_disable_reminder)
-    app.router.add_post("/api/groups", api_create_group)
-    app.router.add_post("/api/groups/{group_id:\\d+}/emoji", api_update_group_emoji)
-    app.router.add_post("/api/groups/{group_id:\\d+}/delete", api_delete_group)
     app.router.add_post("/api/habits/{habit_id:\\d+}/mark", api_mark)
     app.router.add_post("/api/habits/{habit_id:\\d+}/miss", api_miss)
     app.router.add_post("/api/habits/{habit_id:\\d+}/undo", api_undo)
-    app.router.add_post("/api/privacy/delete-data", api_delete_user_data)
     app.router.add_static("/static", WEBAPP_DIR, show_index=False)
     return app
 

@@ -467,7 +467,7 @@
 
     .actions {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: 1fr;
       gap: 8px;
       margin-top: 12px;
     }
@@ -487,16 +487,6 @@
     .goal-row {
       grid-template-columns: 50px 1fr;
       align-items: center;
-    }
-
-    .archive-head {
-      margin-top: 16px;
-    }
-
-    .privacy-panel {
-      margin-top: 16px;
-      display: grid;
-      gap: 10px;
     }
 
     .empty,
@@ -720,21 +710,6 @@
       <div class="list" id="list">
         <div class="empty">Загрузка...</div>
       </div>
-
-      <div class="section-head archive-head">
-        <h2>Архив</h2>
-        <span class="muted">скрытые привычки</span>
-      </div>
-      <div class="list" id="archive-list"></div>
-
-      <div class="panel privacy-panel">
-        <div class="section-head">
-          <h2>Приватность</h2>
-          <span class="muted" id="privacy-user">Telegram ID</span>
-        </div>
-        <p class="muted">Данные хранятся только для работы бота: привычки, отметки, пропуски и напоминания.</p>
-        <button class="danger" id="delete-data" type="button">Удалить мои данные</button>
-      </div>
     </section>
   </main>
 
@@ -782,12 +757,9 @@
     const manageView = document.querySelector("#manage-view");
     const todayList = document.querySelector("#today-list");
     const list = document.querySelector("#list");
-    const archiveList = document.querySelector("#archive-list");
     const form = document.querySelector("#add-form");
     const input = document.querySelector("#habit-name");
     const detailModal = document.querySelector("#detail-modal");
-    const deleteDataButton = document.querySelector("#delete-data");
-    const privacyUser = document.querySelector("#privacy-user");
 
     async function request(path, payload = {}) {
       const response = await fetch(path, {
@@ -1018,8 +990,6 @@
     }
 
     function renderManage(data) {
-      privacyUser.textContent = data.user?.id ? `ID ${data.user.id}` : "Telegram ID";
-
       if (!data.habits.length) {
         list.innerHTML = '<div class="empty">Пока нет активных привычек. Добавь первую здесь, а отмечай в боте.</div>';
       } else {
@@ -1036,7 +1006,6 @@
             </div>
             <div class="actions">
               <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Переименовать</button>
-              <button class="ghost" data-action="archive" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">В архив</button>
             </div>
             <div class="settings">
               <div class="inline-form goal-row">
@@ -1056,22 +1025,6 @@
         `;
         }).join("");
       }
-
-      const archived = data.archived_habits || [];
-      archiveList.innerHTML = archived.length ? archived.map((habit) => `
-        <article class="habit-card">
-          <div class="item-top">
-            <div class="item-title">
-              <h2 class="habit-name">${escapeHtml(habit.name)}</h2>
-              <p class="muted">${escapeHtml(habit.goal_text)} · всего: ${habit.total_completed}</p>
-            </div>
-            <span class="status">архив</span>
-          </div>
-          <div class="actions">
-            <button class="ghost" data-action="restore" data-id="${habit.id}">Вернуть</button>
-          </div>
-        </article>
-      `).join("") : '<div class="empty">Архив пуст.</div>';
     }
 
     async function refresh() {
@@ -1135,34 +1088,10 @@
         state.data = await request(`/api/habits/${id}/rename`, { name: nextName.trim() });
       }
 
-      if (action === "archive") {
-        state.data = await request(`/api/habits/${id}/archive`);
-      }
-
       if (action === "reminder-off") {
         state.data = await request(`/api/habits/${id}/reminder/off`);
       }
 
-      state.stats = await request("/api/stats");
-      renderToday(state.data, state.stats);
-      renderManage(state.data);
-      renderStats(state.stats);
-    });
-
-    archiveList.addEventListener("click", async (event) => {
-      const button = event.target.closest('button[data-action="restore"]');
-      if (!button) return;
-      state.data = await request(`/api/habits/${button.dataset.id}/restore`);
-      state.stats = await request("/api/stats");
-      renderToday(state.data, state.stats);
-      renderManage(state.data);
-      renderStats(state.stats);
-    });
-
-    deleteDataButton.addEventListener("click", async () => {
-      if (!confirm("Удалить все привычки, отметки, пропуски и напоминания?")) return;
-      if (!confirm("Это действие нельзя отменить. Удалить данные окончательно?")) return;
-      state.data = await request("/api/privacy/delete-data");
       state.stats = await request("/api/stats");
       renderToday(state.data, state.stats);
       renderManage(state.data);
