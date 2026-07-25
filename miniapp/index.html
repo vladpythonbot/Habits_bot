@@ -548,6 +548,23 @@
       justify-content: center;
     }
 
+    .modal-field {
+      width: 100%;
+      min-height: 46px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+      color: var(--text);
+      font: inherit;
+      padding: 0 12px;
+      outline: none;
+    }
+
+    .modal-field:focus {
+      border-color: var(--mint);
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, .12);
+    }
+
     .calendar-grid {
       display: grid;
       grid-template-columns: repeat(10, minmax(0, 1fr));
@@ -763,6 +780,20 @@
     </div>
   </div>
 
+  <div class="modal hidden" id="rename-modal">
+    <div class="delete-card">
+      <div>
+        <h2>Переименовать привычку</h2>
+        <p class="muted">Новое название будет видно в списке и статистике.</p>
+      </div>
+      <input class="modal-field" id="rename-input" maxlength="80" autocomplete="off">
+      <div class="modal-actions">
+        <button class="ghost" id="rename-cancel" type="button">Отмена</button>
+        <button id="rename-confirm" type="button">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal hidden" id="delete-modal">
     <div class="delete-card">
       <div>
@@ -795,10 +826,15 @@
     const form = document.querySelector("#add-form");
     const input = document.querySelector("#habit-name");
     const detailModal = document.querySelector("#detail-modal");
+    const renameModal = document.querySelector("#rename-modal");
+    const renameInput = document.querySelector("#rename-input");
+    const renameCancel = document.querySelector("#rename-cancel");
+    const renameConfirm = document.querySelector("#rename-confirm");
     const deleteModal = document.querySelector("#delete-modal");
     const deleteCopy = document.querySelector("#delete-copy");
     const deleteCancel = document.querySelector("#delete-cancel");
     const deleteConfirm = document.querySelector("#delete-confirm");
+    let pendingRename = null;
     let pendingDelete = null;
 
     async function request(path, payload = {}) {
@@ -1124,9 +1160,11 @@
       const { action, id, name } = button.dataset;
 
       if (action === "rename") {
-        const nextName = prompt("Новое название привычки:", name);
-        if (!nextName || !nextName.trim()) return;
-        state.data = await request(`/api/habits/${id}/rename`, { name: nextName.trim() });
+        pendingRename = { id, name: name || "" };
+        renameInput.value = pendingRename.name;
+        renameModal.classList.remove("hidden");
+        setTimeout(() => renameInput.focus(), 0);
+        return;
       }
 
       if (action === "reminder-off") {
@@ -1146,6 +1184,37 @@
       renderToday(state.data, state.stats);
       renderManage(state.data);
       renderStats(state.stats);
+    });
+
+    function closeRenameModal() {
+      pendingRename = null;
+      renameModal.classList.add("hidden");
+    }
+
+    renameCancel.addEventListener("click", closeRenameModal);
+    renameModal.addEventListener("click", (event) => {
+      if (event.target === renameModal) closeRenameModal();
+    });
+    renameInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") renameConfirm.click();
+      if (event.key === "Escape") closeRenameModal();
+    });
+    renameConfirm.addEventListener("click", async () => {
+      if (!pendingRename) return;
+      const nextName = renameInput.value.trim();
+      if (!nextName) return;
+      const { id } = pendingRename;
+      renameConfirm.disabled = true;
+      try {
+        state.data = await request(`/api/habits/${id}/rename`, { name: nextName });
+        state.stats = await request("/api/stats");
+        renderToday(state.data, state.stats);
+        renderManage(state.data);
+        renderStats(state.stats);
+        closeRenameModal();
+      } finally {
+        renameConfirm.disabled = false;
+      }
     });
 
     function closeDeleteModal() {
