@@ -323,67 +323,19 @@ async def habit_diary(user_id: int, habit_id: int, days: int = 30) -> dict | Non
 
 def format_habit_diary_text(item: dict) -> str:
     habit = item["habit"]
-    today_status = "выполнено" if item["today_done"] else ("не сегодня" if item["today_missed"] else "не отмечено")
+    today_status = 'выполнено' if item["today_done"] else ('не сегодня' if item["today_missed"] else 'не отмечено')
     reminder = item["reminder"]
     reminder_text = (
         ", ".join(parse_reminder_times(reminder["reminder_time"]))
         if reminder and reminder["enabled"]
-        else "нет"
+        else 'нет'
     )
     return (
-        f"📖 <b>{habit_name(habit)}</b>\n\n"
-        f"Сегодня: <b>{today_status}</b>\n"
-        f"Напоминание: <b>{reminder_text}</b>\n"
-        f"30 дней: <b>{item['done']}/{item['possible']} · {item['rate']}%</b>\n"
-        f"7 дней: <b>{item['current_done']}/{item['current_possible']} · {item['current_rate']}%</b>\n\n"
-        f"🗓 <b>Календарь</b>\n<code>{item['calendar']}</code>\n\n"
-        "Сегодня не входит в проценты до конца дня."
+        f'📖 <b>{habit_name(habit)}</b>\n\n'
+        f'Сегодня: <b>{today_status}</b>\n'
+        f'Напоминание: <b>{reminder_text}</b>\n\n'
+        '📊 Статистика — в Mini App.'
     )
-
-def compact_stats_text(
-    stats: dict,
-    breakdown: list[dict],
-    comparison: dict,
-    title: str = "Статистика",
-    scope_note: str = "",
-) -> str:
-    current_text = (
-        f"{comparison['current_done']}/{comparison['current_possible']} · {comparison['current_rate']}%"
-        if comparison["has_current"]
-        else "нет данных"
-    )
-    previous_text = (
-        f"{comparison['previous_done']}/{comparison['previous_possible']} · {comparison['previous_rate']}%"
-        if comparison["has_previous"]
-        else "нет данных"
-    )
-    diff_text = f"{comparison['diff']:+d}%" if comparison["has_current"] and comparison["has_previous"] else "пока нет"
-    lines = [
-        f"🔵 <b>{title}</b>",
-        scope_note or "За 30 дней, сегодня не входит в проценты.",
-        "",
-        f"Сегодня: <b>{stats['today_done']}/{stats['habits_count']}</b>",
-        f"30 дней: <b>{stats['period_completed']}/{stats['possible']} · {stats['completion_rate']}%</b>",
-        f"Последние 7 дней: <b>{current_text}</b>",
-        f"7 дней до этого: <b>{previous_text}</b>",
-        f"Разница: <b>{diff_text}</b>",
-        f"Вывод: {comparison['note']}",
-        "",
-        "🟣 <b>Привычки за 7 дней</b>",
-    ]
-
-    if not breakdown:
-        lines.append("Пока нет данных.")
-        return "\n".join(lines)
-
-    for item in breakdown:
-        lines.append(
-            f"• <b>{habit_name(item['habit'])}</b> — {item['done']}/{item['possible']} · {item['rate']}%"
-        )
-        lines.append(format_heatmap(item["heatmap"]))
-
-    return "\n".join(lines)
-
 
 def format_heatmap(heatmap: str) -> str:
     return " ".join(list(heatmap))
@@ -402,23 +354,9 @@ async def main_summary(user_id: int) -> str:
     habits = await get_user_habits(user_id)
 
     if not habits:
-        return (
-            "🟣 <b>HabitFlow</b>\n"
-            "Пока привычек нет. Добавь одно маленькое действие."
-        )
+        return '🟣 <b>HabitFlow</b>\nПока привычек нет. Добавь одно маленькое действие.'
 
-    today = today_str()
-    done = sum(1 for h in habits if h[5] == today)
-    status, percent = daily_status(done, len(habits))
-
-    lines = [
-        "🟣 <b>HabitFlow</b>",
-        f"{status} Сегодня: <b>{done}/{len(habits)}</b> · {percent}%",
-        progress_bar(percent),
-    ]
-
-    return "\n".join(lines)
-
+    return '🟣 <b>HabitFlow</b>'
 
 def habit_actions_keyboard(habits, groups) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text="➕ Привычка", callback_data="add_habit")]]
@@ -620,77 +558,14 @@ async def statistics(message: types.Message, state: FSMContext):
     await message.answer("Статистика теперь в Mini App: открой кнопку меню рядом с полем ввода.", reply_markup=main_keyboard)
 
 
-async def show_statistics(obj: types.Message | types.CallbackQuery, user_id: int):
-    stats = await get_user_stats(user_id, days=30)
-    groups = await get_habit_groups(user_id)
-
-    if stats["habits_count"] == 0:
-        text = (
-            "🔵 <b>Основные привычки</b>\n\n"
-            "Здесь считаются привычки без темы."
-        )
-        if groups:
-            text += "\nТемы ниже считаются отдельно."
-        else:
-            text += "\nПока нечего считать. Добавь первую привычку."
-        await answer_or_edit(
-            obj,
-            text,
-            stats_keyboard(groups),
-        )
-        return
-
-    breakdown = await habit_breakdown(user_id, days=8)
-    comparison = week_comparison(stats)
-    await answer_or_edit(
-        obj,
-        compact_stats_text(
-            stats,
-            breakdown,
-            comparison,
-            "Основные привычки",
-            "За 30 дней. Темы считаются отдельно кнопками ниже.",
-        ),
-        stats_keyboard(groups),
-    )
-
-
 @router.callback_query(F.data == "open_stats")
 async def open_stats(callback: types.CallbackQuery):
     await callback.answer("Статистика теперь в Mini App", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("group_stats_"))
-async def show_group_statistics(callback: types.CallbackQuery):
-    group_id = int(callback.data.split("_")[-1])
-    group = await get_habit_group(callback.from_user.id, group_id)
-    if not group:
-        await callback.answer("Тема не найдена", show_alert=True)
-        return
-
-    stats = await get_user_stats(callback.from_user.id, days=30, group_id=group_id)
-    if stats["habits_count"] == 0:
-        await answer_or_edit(
-            callback,
-            f"🔵 <b>{group_name(group)}</b>\n\nВ этой теме пока нет привычек.",
-            group_keyboard(group_id, []),
-        )
-        return
-
-    breakdown = await habit_breakdown(callback.from_user.id, days=8, group_id=group_id)
-    comparison = week_comparison(stats)
-    await answer_or_edit(
-        callback,
-        compact_stats_text(
-            stats,
-            breakdown,
-            comparison,
-            f"Тема: {group_title(group)}",
-            "Статистика только этой темы. Сегодня не входит в проценты.",
-        ),
-        group_keyboard(group_id, stats["habits"]),
-    )
-
+async def show_group_stats(callback: types.CallbackQuery):
+    await callback.answer('Статистика теперь в Mini App', show_alert=True)
 
 @router.callback_query(F.data.startswith("habit_diary_"))
 async def show_habit_diary(callback: types.CallbackQuery, state: FSMContext):
@@ -1017,42 +892,35 @@ async def show_habits(obj: types.Message | types.CallbackQuery, user_id: int):
     habits = await get_user_habits(user_id)
 
     if not habits:
-        text = "🟣 <b>Дневник привычек</b>\n\nСписок пуст. Начнём с одной."
+        text = '🟣 <b>Дневник привычек</b>\n\nСписок пуст. Начнём с одной.'
     else:
-        text = "🟣 <b>Дневник привычек</b>"
+        text = '🟣 <b>Дневник привычек</b>'
+        today = today_str()
         for habit in habits:
-            _, _, _, _, total_completed, last_date, _, _, *_ = habit
-            done_today = " 🟢" if last_date == today_str() else ""
-            text += (
-                f"\n📖 <b>{habit_name(habit)}</b>{done_today}\n"
-                f"{'Сегодня отмечено' if last_date == today_str() else 'Сегодня не отмечено'} · всего: {total_completed}\n"
-            )
+            done_today = ' 🟢' if habit[5] == today else ""
+            text += f'\n📖 <b>{habit_name(habit)}</b>{done_today}'
 
     await answer_or_edit(obj, text, habit_actions_keyboard(habits, ()))
-
 
 @router.callback_query(F.data.startswith("group_open_"))
 async def open_group(callback: types.CallbackQuery):
     group_id = int(callback.data.split("_")[-1])
     group = await get_habit_group(callback.from_user.id, group_id)
     if not group:
-        await callback.answer("Тема не найдена", show_alert=True)
+        await callback.answer('Тема не найдена', show_alert=True)
         return
 
     habits = await get_user_habits(callback.from_user.id, group_id=group_id)
     text = f"<b>{group_title(group)}</b>"
     if not habits:
-        text += "\n\nВ этой теме пока пусто. Добавь первую привычку."
+        text += '\n\nВ этой теме пока пусто. Добавь первую привычку.'
     else:
         today = today_str()
-        done = sum(1 for habit in habits if habit[5] == today)
-        text += f"\n\nСегодня: <b>{done}/{len(habits)}</b>"
         for habit in habits:
-            status = "🟢" if habit[5] == today else "⚪"
-            text += f"\n{status} <b>{habit_name(habit)}</b>"
+            status = '🟢' if habit[5] == today else '⚪'
+            text += f'\n{status} <b>{habit_name(habit)}</b>'
 
     await answer_or_edit(callback, text, group_keyboard(group_id, habits))
-
 
 @router.callback_query(F.data.startswith("group_settings_"))
 async def open_group_settings(callback: types.CallbackQuery):
@@ -1084,12 +952,9 @@ async def add_existing_habit_to_group(callback: types.CallbackQuery):
         habits = await get_user_habits(callback.from_user.id, group_id=group_id)
         text = f"<b>{group_title(group)}</b>\n\nПривычка добавлена в тему."
         today = today_str()
-        done = sum(1 for habit in habits if habit[5] == today)
-        text += f"\n\nСегодня: <b>{done}/{len(habits)}</b>"
         for habit in habits:
-            status = "🟢" if habit[5] == today else "⚪"
+            status = '🟢' if habit[5] == today else '⚪'
             text += f"\n{status} <b>{habit_name(habit)}</b>"
-
         await answer_or_edit(callback, text, group_keyboard(group_id, habits))
         return
 
