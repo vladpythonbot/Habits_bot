@@ -1006,6 +1006,7 @@
             </div>
             <div class="actions">
               <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Переименовать</button>
+              <button class="danger" data-action="delete" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Удалить</button>
             </div>
             <div class="settings">
               <div class="inline-form goal-row">
@@ -1090,6 +1091,12 @@
 
       if (action === "reminder-off") {
         state.data = await request(`/api/habits/${id}/reminder/off`);
+      }
+
+      if (action === "delete") {
+        const label = name || "";
+        if (!confirm(`Удалить привычку${label ? `: ${label}` : ""}?`)) return;
+        state.data = await request(`/api/habits/${id}/delete`);
       }
 
       state.stats = await request("/api/stats");

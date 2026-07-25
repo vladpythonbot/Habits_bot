@@ -322,10 +322,13 @@ async def mark_habit_completed(user_id: int, habit_id: int):
             return False, None
 
         new_streak = current_streak + 1 if last_completed == yesterday_str() else 1
-        await db.execute("""
+        cursor = await db.execute("""
             INSERT OR IGNORE INTO habit_logs (user_id, habit_id, completed_date, created_at)
             VALUES (?, ?, ?, ?)
         """, (user_id, habit_id, today, datetime.now().isoformat(timespec="seconds")))
+
+        if cursor.rowcount == 0:
+            return False, None
 
         await db.execute("""
             DELETE FROM habit_misses
@@ -337,7 +340,7 @@ async def mark_habit_completed(user_id: int, habit_id: int):
             SET last_completed_date = ?,
                 streak = ?,
                 total_completed = total_completed + 1
-            WHERE id = ? AND user_id = ?
+            WHERE id = ? AND user_id = ? AND archived_at IS NULL
         """, (today, new_streak, habit_id, user_id))
 
         await db.commit()

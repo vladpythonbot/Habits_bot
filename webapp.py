@@ -1,7 +1,9 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
+import time
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -30,6 +32,8 @@ from db import (
 
 BASE_DIR = Path(__file__).resolve().parent
 WEBAPP_DIR = BASE_DIR / "miniapp"
+MAX_INIT_DATA_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", str(24 * 60 * 60)))
+logger = logging.getLogger(__name__)
 
 
 def verify_init_data(init_data: str) -> dict:
@@ -40,6 +44,14 @@ def verify_init_data(init_data: str) -> dict:
     received_hash = pairs.pop("hash", None)
     if not received_hash:
         raise web.HTTPUnauthorized(text="Telegram init data hash is missing")
+
+    try:
+        auth_date = int(pairs.get("auth_date", "0"))
+    except ValueError as exc:
+        raise web.HTTPUnauthorized(text="Telegram auth_date is invalid") from exc
+
+    if not auth_date or time.time() - auth_date > MAX_INIT_DATA_AGE:
+        raise web.HTTPUnauthorized(text="Telegram init data is expired")
 
     data_check_string = "\n".join(f"{key}={value}" for key, value in sorted(pairs.items()))
     secret_key = hmac.new(b"WebAppData", TOKEN.encode(), hashlib.sha256).digest()
@@ -425,8 +437,19 @@ async def api_undo(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
+@web.middleware
+async def error_middleware(request: web.Request, handler):
+    try:
+        return await handler(request)
+    except web.HTTPException:
+        raise
+    except Exception:
+        logger.exception("Web API request failed: %s %s", request.method, request.path)
+        return web.json_response({"error": "internal_error"}, status=500)
+
+
 def create_web_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[error_middleware])
     app.router.add_get("/", index)
     app.router.add_get("/miniapp", index)
     app.router.add_get("/api/state", api_state)
