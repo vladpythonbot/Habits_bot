@@ -526,6 +526,28 @@
       gap: 12px;
     }
 
+    .delete-card {
+      width: min(420px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 18px 40px rgba(20, 28, 24, .22);
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .modal-actions button {
+      width: 100%;
+      justify-content: center;
+    }
+
     .calendar-grid {
       display: grid;
       grid-template-columns: repeat(10, minmax(0, 1fr));
@@ -741,6 +763,19 @@
     </div>
   </div>
 
+  <div class="modal hidden" id="delete-modal">
+    <div class="delete-card">
+      <div>
+        <h2>Удалить привычку?</h2>
+        <p class="muted" id="delete-copy">История отметок тоже исчезнет.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost" id="delete-cancel" type="button">Отмена</button>
+        <button class="danger" id="delete-confirm" type="button">Удалить</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const tg = window.Telegram?.WebApp;
     tg?.ready();
@@ -760,6 +795,11 @@
     const form = document.querySelector("#add-form");
     const input = document.querySelector("#habit-name");
     const detailModal = document.querySelector("#detail-modal");
+    const deleteModal = document.querySelector("#delete-modal");
+    const deleteCopy = document.querySelector("#delete-copy");
+    const deleteCancel = document.querySelector("#delete-cancel");
+    const deleteConfirm = document.querySelector("#delete-confirm");
+    let pendingDelete = null;
 
     async function request(path, payload = {}) {
       const response = await fetch(path, {
@@ -1094,15 +1134,43 @@
       }
 
       if (action === "delete") {
-        const label = name || "";
-        if (!confirm(`Удалить привычку${label ? `: ${label}` : ""}?`)) return;
-        state.data = await request(`/api/habits/${id}/delete`);
+        pendingDelete = { id, name: name || "" };
+        deleteCopy.textContent = pendingDelete.name
+          ? `«${pendingDelete.name}» и история отметок исчезнут.`
+          : "Привычка и история отметок исчезнут.";
+        deleteModal.classList.remove("hidden");
+        return;
       }
 
       state.stats = await request("/api/stats");
       renderToday(state.data, state.stats);
       renderManage(state.data);
       renderStats(state.stats);
+    });
+
+    function closeDeleteModal() {
+      pendingDelete = null;
+      deleteModal.classList.add("hidden");
+    }
+
+    deleteCancel.addEventListener("click", closeDeleteModal);
+    deleteModal.addEventListener("click", (event) => {
+      if (event.target === deleteModal) closeDeleteModal();
+    });
+    deleteConfirm.addEventListener("click", async () => {
+      if (!pendingDelete) return;
+      const { id } = pendingDelete;
+      deleteConfirm.disabled = true;
+      try {
+        state.data = await request(`/api/habits/${id}/delete`);
+        state.stats = await request("/api/stats");
+        renderToday(state.data, state.stats);
+        renderManage(state.data);
+        renderStats(state.stats);
+        closeDeleteModal();
+      } finally {
+        deleteConfirm.disabled = false;
+      }
     });
 
     todayList.addEventListener("click", async (event) => {
