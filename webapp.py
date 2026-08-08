@@ -97,6 +97,22 @@ async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
     }
 
 
+async def get_action_date(request: web.Request) -> str:
+    payload = await get_json_payload(request)
+    value = payload.get("date") or today_str()
+    try:
+        selected = parse_date(value)
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(text="Invalid date") from exc
+
+    today = parse_date(today_str())
+    first_available = parse_date(date_range(30)[0])
+    if selected > today or selected < first_available:
+        raise web.HTTPBadRequest(text="Date is outside the available calendar range")
+
+    return selected.strftime("%Y-%m-%d")
+
+
 def goal_label(goal_type: str | None, goal_value: int | None) -> str:
     if goal_type == "weekdays":
         return "По будням"
@@ -417,7 +433,8 @@ async def api_stats(request: web.Request) -> web.Response:
 async def api_mark(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     habit_id = int(request.match_info["habit_id"])
-    await mark_habit_completed(int(user["id"]), habit_id)
+    completed_date = await get_action_date(request)
+    await mark_habit_completed(int(user["id"]), habit_id, completed_date)
     return await api_state(request)
 
 
@@ -425,15 +442,17 @@ async def api_miss(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     habit_id = int(request.match_info["habit_id"])
     user_id = int(user["id"])
-    await unmark_habit_completed(user_id, habit_id)
-    await record_habit_miss(user_id, habit_id)
+    missed_date = await get_action_date(request)
+    await unmark_habit_completed(user_id, habit_id, missed_date)
+    await record_habit_miss(user_id, habit_id, missed_date)
     return await api_state(request)
 
 
 async def api_undo(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     habit_id = int(request.match_info["habit_id"])
-    await unmark_habit_completed(int(user["id"]), habit_id)
+    completed_date = await get_action_date(request)
+    await unmark_habit_completed(int(user["id"]), habit_id, completed_date)
     return await api_state(request)
 
 

@@ -576,11 +576,23 @@
       border-radius: 6px;
       background: var(--surface-soft);
       border: 1px solid var(--line);
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-size: 11px;
+      line-height: 1;
+      padding: 0;
+      transition: transform .12s ease, border-color .12s ease, background .12s ease;
+    }
+
+    .calendar-day:active {
+      transform: scale(.94);
     }
 
     .calendar-day.done {
       background: var(--mint);
       border-color: var(--mint);
+      color: #07130d;
     }
 
     .calendar-day.skipped {
@@ -591,6 +603,8 @@
 
     .calendar-day.future {
       opacity: .35;
+      cursor: default;
+      pointer-events: none;
     }
 
     @media (max-width: 680px) {
@@ -813,7 +827,7 @@
     tg?.expand();
 
     const initData = tg?.initData || "";
-    const state = { data: null, stats: null, tab: "today" };
+    const state = { data: null, stats: null, tab: "today", detailHabitId: null };
 
     const todayTab = document.querySelector("#today-tab");
     const statsTab = document.querySelector("#stats-tab");
@@ -973,6 +987,7 @@
     function openDetail(habitId) {
       const habit = (state.stats?.habit_rows || []).find((item) => Number(item.id) === Number(habitId));
       if (!habit) return;
+      state.detailHabitId = Number(habitId);
       document.querySelector("#detail-title").textContent = habit.name;
       document.querySelector("#detail-subtitle").textContent = `${habit.goal_text} · ${habit.period_completed}/${habit.possible} за 30 дней`;
       document.querySelector("#detail-rate").textContent = `${habit.completion_rate}%`;
@@ -983,7 +998,11 @@
       document.querySelector("#detail-total").textContent = habit.total_completed || 0;
       document.querySelector("#detail-calendar").innerHTML = habit.calendar.map((day) => {
         const className = `calendar-day ${day.done ? "done" : ""} ${day.expected ? "" : "skipped"} ${day.available ? "" : "future"}`;
-        return `<span class="${className}" title="${day.date}"></span>`;
+        return `
+          <button class="${className}" type="button" data-action="calendar-day" data-id="${habit.id}" data-date="${day.date}" data-done="${day.done ? "1" : "0"}" title="${day.date}">
+            ${day.date.slice(8)}
+          </button>
+        `;
       }).join("");
       detailModal.classList.remove("hidden");
     }
@@ -1274,10 +1293,34 @@
 
     document.querySelector("#detail-close").addEventListener("click", () => {
       detailModal.classList.add("hidden");
+      state.detailHabitId = null;
     });
 
     detailModal.addEventListener("click", (event) => {
-      if (event.target === detailModal) detailModal.classList.add("hidden");
+      if (event.target === detailModal) {
+        detailModal.classList.add("hidden");
+        state.detailHabitId = null;
+        return;
+      }
+
+      const dayButton = event.target.closest('[data-action="calendar-day"]');
+      if (!dayButton || !detailModal.contains(dayButton)) return;
+
+      const { id, date, done } = dayButton.dataset;
+      dayButton.disabled = true;
+      request(`/api/habits/${id}/${done === "1" ? "undo" : "mark"}`, { date })
+        .then(async (data) => {
+          state.data = data;
+          state.stats = await request("/api/stats");
+          renderToday(state.data, state.stats);
+          renderManage(state.data);
+          renderStats(state.stats);
+          openDetail(id);
+        })
+        .catch((error) => showToast(error.message || "Error"))
+        .finally(() => {
+          dayButton.disabled = false;
+        });
     });
 
     refresh();

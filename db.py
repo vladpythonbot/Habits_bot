@@ -28,6 +28,24 @@ def parse_date(value: str):
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
+def recalculate_progress(completed_dates: list[str], goal_type: str | None = None) -> tuple[str | None, int, int]:
+    last_completed_date = completed_dates[0] if completed_dates else None
+    streak = 0
+    if completed_dates:
+        completed = {parse_date(date) for date in completed_dates}
+        expected = parse_date(completed_dates[0])
+        while True:
+            if goal_type == "weekdays" and not expects_daily_check(goal_type, expected):
+                expected -= timedelta(days=1)
+                continue
+            if expected not in completed:
+                break
+            streak += 1
+            expected -= timedelta(days=1)
+
+    return last_completed_date, streak, len(completed_dates)
+
+
 def normalize_habit_goal(goal_type: str | None, goal_value: int | None = None) -> tuple[str, int]:
     if goal_type == "weekdays":
         return "weekdays", 5
@@ -302,12 +320,12 @@ async def delete_habit_group(user_id: int, group_id: int) -> bool:
         return cursor.rowcount > 0
 
 
-async def mark_habit_completed(user_id: int, habit_id: int):
-    today = today_str()
+async def mark_habit_completed(user_id: int, habit_id: int, completed_date: str | None = None):
+    completed_date = completed_date or today_str()
 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT last_completed_date, streak, habit_name
+            SELECT habit_name, created_date, goal_type
             FROM habits
             WHERE id = ? AND user_id = ? AND archived_at IS NULL
         """, (habit_id, user_id))
@@ -316,16 +334,14 @@ async def mark_habit_completed(user_id: int, habit_id: int):
         if not result:
             return False, None
 
-        last_completed, current_streak, habit_name = result
-
-        if last_completed == today:
+        habit_name, created_date, goal_type = result
+        if parse_date(completed_date) < parse_date(created_date):
             return False, None
 
-        new_streak = current_streak + 1 if last_completed == yesterday_str() else 1
         cursor = await db.execute("""
             INSERT OR IGNORE INTO habit_logs (user_id, habit_id, completed_date, created_at)
             VALUES (?, ?, ?, ?)
-        """, (user_id, habit_id, today, datetime.now().isoformat(timespec="seconds")))
+        """, (user_id, habit_id, completed_date, datetime.now().isoformat(timespec="seconds")))
 
         if cursor.rowcount == 0:
             return False, None
@@ -333,15 +349,24 @@ async def mark_habit_completed(user_id: int, habit_id: int):
         await db.execute("""
             DELETE FROM habit_misses
             WHERE user_id = ? AND habit_id = ? AND missed_date = ?
-        """, (user_id, habit_id, today))
+        """, (user_id, habit_id, completed_date))
+
+        cursor = await db.execute("""
+            SELECT completed_date
+            FROM habit_logs
+            WHERE user_id = ? AND habit_id = ?
+            ORDER BY completed_date DESC
+        """, (user_id, habit_id))
+        completed_dates = [item[0] for item in await cursor.fetchall()]
+        last_completed_date, new_streak, total_completed = recalculate_progress(completed_dates, goal_type)
 
         await db.execute("""
             UPDATE habits
             SET last_completed_date = ?,
                 streak = ?,
-                total_completed = total_completed + 1
+                total_completed = ?
             WHERE id = ? AND user_id = ? AND archived_at IS NULL
-        """, (today, new_streak, habit_id, user_id))
+        """, (last_completed_date, new_streak, total_completed, habit_id, user_id))
 
         await db.commit()
 
@@ -351,12 +376,12 @@ async def mark_habit_completed(user_id: int, habit_id: int):
     }
 
 
-async def unmark_habit_completed(user_id: int, habit_id: int):
-    today = today_str()
+async def unmark_habit_completed(user_id: int, habit_id: int, completed_date: str | None = None):
+    completed_date = completed_date or today_str()
 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT habit_name
+            SELECT habit_name, goal_type
             FROM habits
             WHERE id = ? AND user_id = ? AND archived_at IS NULL
         """, (habit_id, user_id))
@@ -364,11 +389,11 @@ async def unmark_habit_completed(user_id: int, habit_id: int):
         if not row:
             return False, None
 
-        habit_name = row[0]
+        habit_name, goal_type = row
         cursor = await db.execute("""
             DELETE FROM habit_logs
             WHERE user_id = ? AND habit_id = ? AND completed_date = ?
-        """, (user_id, habit_id, today))
+        """, (user_id, habit_id, completed_date))
         if cursor.rowcount == 0:
             return False, None
 
@@ -379,16 +404,7 @@ async def unmark_habit_completed(user_id: int, habit_id: int):
             ORDER BY completed_date DESC
         """, (user_id, habit_id))
         completed_dates = [item[0] for item in await cursor.fetchall()]
-
-        last_completed_date = completed_dates[0] if completed_dates else None
-        streak = 0
-        if completed_dates:
-            expected = parse_date(completed_dates[0])
-            for completed_date in completed_dates:
-                if parse_date(completed_date) != expected:
-                    break
-                streak += 1
-                expected -= timedelta(days=1)
+        last_completed_date, streak, total_completed = recalculate_progress(completed_dates, goal_type)
 
         await db.execute("""
             UPDATE habits
@@ -396,7 +412,7 @@ async def unmark_habit_completed(user_id: int, habit_id: int):
                 streak = ?,
                 total_completed = ?
             WHERE id = ? AND user_id = ?
-        """, (last_completed_date, streak, len(completed_dates), habit_id, user_id))
+        """, (last_completed_date, streak, total_completed, habit_id, user_id))
 
         await db.commit()
 
