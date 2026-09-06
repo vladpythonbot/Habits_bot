@@ -63,32 +63,6 @@ def expects_daily_check(goal_type: str | None, check_date) -> bool:
     return True
 
 
-def expected_dates_for_goal(created_date: str, goal_type: str | None, goal_value: int | None, dates: list[str]) -> set[str]:
-    created = parse_date(created_date)
-    active_dates = [date for date in dates if parse_date(date) >= created]
-    if goal_type == "weekdays":
-        return {date for date in active_dates if parse_date(date).weekday() < 5}
-    if goal_type == "weekly":
-        limit = max(1, min(7, int(goal_value or 3)))
-        by_week: dict[tuple[int, int], list[str]] = {}
-        for date in active_dates:
-            parsed = parse_date(date)
-            year, week, _ = parsed.isocalendar()
-            by_week.setdefault((year, week), []).append(date)
-        return {date for week_dates in by_week.values() for date in week_dates[:limit]}
-    return set(active_dates)
-
-
-def efficiency_status(percent: int) -> str:
-    if percent >= 85:
-        return f"{percent}% \u2014 \u041e\u0442\u043b\u0438\u0447\u043d\u043e. \u0421\u0438\u0441\u0442\u0435\u043c\u0430 \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 \u0441\u0442\u0430\u0431\u0438\u043b\u044c\u043d\u043e, \u0432\u0441\u0451 \u0432 \u0444\u043e\u043a\u0443\u0441\u0435."
-    if percent >= 70:
-        return f"{percent}% \u2014 \u041d\u043e\u0440\u043c\u0430\u043b\u044c\u043d\u043e. \u0420\u0430\u0431\u043e\u0447\u0438\u0439 \u0440\u0435\u0436\u0438\u043c, \u0431\u0430\u0437\u0430 \u0434\u0435\u0440\u0436\u0438\u0442\u0441\u044f."
-    if percent >= 50:
-        return f"{percent}% \u2014 \u041f\u043e\u0448\u043b\u0438 \u0441\u0431\u043e\u0438. \u0421\u0442\u043e\u0438\u0442 \u043e\u0431\u0440\u0430\u0442\u0438\u0442\u044c \u0432\u043d\u0438\u043c\u0430\u043d\u0438\u0435 \u043d\u0430 \u0441\u043e\u043d \u0438 \u043f\u0438\u0442\u0430\u043d\u0438\u0435."
-    return f"{percent}% \u2014 \u0421\u043f\u0430\u0434. \u041f\u043e\u0440\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0433\u0440\u0430\u0444\u0438\u043a \u0438 \u0441\u0434\u0435\u043b\u0430\u0442\u044c \u043e\u0434\u043d\u043e \u043f\u0440\u043e\u0441\u0442\u043e\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435."
-
-
 def sleep_hours(sleep_out: str | None, sleep_up: str | None) -> float:
     if not sleep_out or not sleep_up:
         return 0.0
@@ -101,33 +75,6 @@ def sleep_hours(sleep_out: str | None, sleep_up: str | None) -> float:
         end += timedelta(days=1)
     return round((end - start).total_seconds() / 3600, 1)
 
-
-def habit_efficiency(habit, dates: list[str], completed_dates: set[str], missed_dates: set[str]) -> dict:
-    target_dates = expected_dates_for_goal(habit[2], habit[8], habit[9], dates) - missed_dates
-    fact_days = len(target_dates & completed_dates)
-    target_days = len(target_dates)
-    efficiency = min(100, round(fact_days / target_days * 100)) if target_days else 0
-    return {
-        "habit_id": habit[0],
-        "habit_name": habit[1],
-        "target_days": target_days,
-        "fact_days": fact_days,
-        "efficiency": efficiency,
-    }
-
-
-def total_efficiency(habits, dates: list[str], completed_by_habit: dict[int, set[str]], missed_by_habit: dict[int, set[str]]) -> dict:
-    items = [
-        habit_efficiency(
-            habit,
-            dates,
-            completed_by_habit.get(habit[0], set()),
-            missed_by_habit.get(habit[0], set()),
-        )
-        for habit in habits
-    ]
-    percent = round(sum(item["efficiency"] for item in items) / len(items)) if items else 0
-    return {"percent": percent, "status": efficiency_status(percent), "items": items}
 
 async def init_db():
     Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
@@ -168,6 +115,13 @@ async def init_db():
             await db.execute("ALTER TABLE habits ADD COLUMN goal_value INTEGER NOT NULL DEFAULT 7")
         if "archived_at" not in habit_columns:
             await db.execute("ALTER TABLE habits ADD COLUMN archived_at TEXT")
+        if "habit_position" not in habit_columns:
+            await db.execute("ALTER TABLE habits ADD COLUMN habit_position INTEGER NOT NULL DEFAULT 0")
+            await db.execute("""
+                UPDATE habits
+                SET habit_position = id
+                WHERE habit_position = 0
+            """)
 
         cursor = await db.execute("PRAGMA table_info(habit_groups)")
         group_columns = {row[1] for row in await cursor.fetchall()}
@@ -203,18 +157,6 @@ async def init_db():
                 enabled BOOLEAN DEFAULT 1,
                 reminder_time TEXT NOT NULL,
                 PRIMARY KEY(user_id, habit_id)
-            )
-        """)
-
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS efficiency_alerts (
-                user_id INTEGER NOT NULL,
-                alert_date TEXT NOT NULL,
-                current_rate INTEGER NOT NULL,
-                previous_rate INTEGER NOT NULL,
-                drop_percent INTEGER NOT NULL,
-                created_at TEXT NOT NULL,
-                PRIMARY KEY(user_id, alert_date)
             )
         """)
 
@@ -293,11 +235,18 @@ async def save_habit(
             if not await cursor.fetchone():
                 group_id = None
 
+        cursor = await db.execute("""
+            SELECT COALESCE(MAX(habit_position), 0) + 1
+            FROM habits
+            WHERE user_id = ?
+        """, (user_id,))
+        position = (await cursor.fetchone())[0]
+
         await db.execute("""
             INSERT INTO habits
-            (user_id, habit_name, created_date, last_completed_date, streak, total_completed, goal_days, group_id, goal_type, goal_value)
-            VALUES (?, ?, ?, NULL, 0, 0, ?, ?, ?, ?)
-        """, (user_id, habit_name, today_str(), goal_days, group_id, goal_type, goal_value))
+            (user_id, habit_name, created_date, last_completed_date, streak, total_completed, goal_days, group_id, goal_type, goal_value, habit_position)
+            VALUES (?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?)
+        """, (user_id, habit_name, today_str(), goal_days, group_id, goal_type, goal_value, position))
         await db.commit()
 
 
@@ -322,9 +271,42 @@ async def get_user_habits(
                    goal_type, goal_value
             FROM habits
             WHERE {' AND '.join(conditions)}
-            ORDER BY created_date ASC, id ASC
+            ORDER BY habit_position ASC, created_date ASC, id ASC
         """, params)
         return await cursor.fetchall()
+
+
+async def move_habit(user_id: int, habit_id: int, direction: str) -> bool:
+    if direction not in {"up", "down"}:
+        return False
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT id, habit_position
+            FROM habits
+            WHERE user_id = ? AND id = ? AND archived_at IS NULL
+        """, (user_id, habit_id))
+        current = await cursor.fetchone()
+        if not current:
+            return False
+
+        operator = "<" if direction == "up" else ">"
+        order = "DESC" if direction == "up" else "ASC"
+        cursor = await db.execute(f"""
+            SELECT id, habit_position
+            FROM habits
+            WHERE user_id = ? AND archived_at IS NULL AND habit_position {operator} ?
+            ORDER BY habit_position {order}, id {order}
+            LIMIT 1
+        """, (user_id, current[1]))
+        neighbor = await cursor.fetchone()
+        if not neighbor:
+            return True
+
+        await db.execute("UPDATE habits SET habit_position = ? WHERE id = ? AND user_id = ?", (neighbor[1], current[0], user_id))
+        await db.execute("UPDATE habits SET habit_position = ? WHERE id = ? AND user_id = ?", (current[1], neighbor[0], user_id))
+        await db.commit()
+        return True
 
 
 async def create_habit_group(user_id: int, group_name: str, emoji: str = "🎯") -> tuple[bool, int | None]:
@@ -626,77 +608,6 @@ async def refresh_missed_streaks(user_id: int):
         await db.commit()
 
 
-async def get_user_stats(user_id: int, days: int = 30, group_id: int | None = None):
-    habits = await get_user_habits(user_id, group_id=group_id, ungrouped_only=group_id is None)
-    dates = date_range(days)
-    today = today_str()
-    completed_dates = [date for date in dates if date != today]
-    first_date = dates[0]
-    group_condition = "h.group_id = ?" if group_id is not None else "h.group_id IS NULL"
-    group_params = [group_id] if group_id is not None else []
-
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute(f"""
-            SELECT l.completed_date, COUNT(*)
-            FROM habit_logs AS l
-            JOIN habits AS h
-                ON h.id = l.habit_id AND h.user_id = l.user_id
-            WHERE l.user_id = ?
-              AND l.completed_date >= ?
-              AND {group_condition}
-            GROUP BY l.completed_date
-        """, [user_id, first_date, *group_params])
-        daily_rows = await cursor.fetchall()
-
-        cursor = await db.execute(f"""
-            SELECT COUNT(*)
-            FROM habit_logs AS l
-            JOIN habits AS h
-                ON h.id = l.habit_id AND h.user_id = l.user_id
-            WHERE l.user_id = ?
-              AND {group_condition}
-        """, [user_id, *group_params])
-        total_completed = (await cursor.fetchone())[0]
-
-        cursor = await db.execute(f"""
-            SELECT COUNT(*)
-            FROM habit_misses AS m
-            JOIN habits AS h
-                ON h.id = m.habit_id AND h.user_id = m.user_id
-            WHERE m.user_id = ?
-              AND m.missed_date >= ?
-              AND {group_condition}
-        """, [user_id, first_date, *group_params])
-        recorded_misses = (await cursor.fetchone())[0]
-
-    daily_done = {date: count for date, count in daily_rows}
-    possible = 0
-
-    for habit in habits:
-        created = parse_date(habit[2])
-        for date in completed_dates:
-            if parse_date(date) >= created:
-                possible += 1
-
-    period_completed = sum(count for date, count in daily_done.items() if date in completed_dates)
-    completion_rate = round(period_completed / possible * 100) if possible else 0
-    missed_days = recorded_misses
-    today_done = daily_done.get(today, 0)
-
-    return {
-        "habits_count": len(habits),
-        "total_completed": total_completed,
-        "period_completed": period_completed,
-        "possible": possible,
-        "completion_rate": completion_rate,
-        "missed_days": missed_days,
-        "today_done": today_done,
-        "dates": dates,
-        "daily_done": daily_done,
-        "habits": habits,
-    }
-
-
 async def get_habit_logs(user_id: int, habit_id: int | None = None, days: int = 30):
     dates = date_range(days)
     params = [user_id, dates[0]]
@@ -734,59 +645,6 @@ async def get_habit_misses(user_id: int, habit_id: int | None = None, days: int 
         cursor = await db.execute(query, params)
         return await cursor.fetchall()
 
-
-async def get_user_efficiency_report(user_id: int) -> dict:
-    habits = await get_user_habits(user_id)
-    closed_dates = [date for date in date_range(31) if date != today_str()]
-    last_30_dates = closed_dates[-30:]
-    last_7_dates = closed_dates[-7:]
-    previous_7_dates = closed_dates[-14:-7]
-    logs = await get_habit_logs(user_id, days=31)
-    misses = await get_habit_misses(user_id, days=31)
-    completed_by_habit: dict[int, set[str]] = {}
-    missed_by_habit: dict[int, set[str]] = {}
-
-    for habit_id, completed_date in logs:
-        completed_by_habit.setdefault(habit_id, set()).add(completed_date)
-    for habit_id, missed_date in misses:
-        missed_by_habit.setdefault(habit_id, set()).add(missed_date)
-
-    last_7 = total_efficiency(habits, last_7_dates, completed_by_habit, missed_by_habit)
-    previous_7 = total_efficiency(habits, previous_7_dates, completed_by_habit, missed_by_habit)
-    last_30 = total_efficiency(habits, last_30_dates, completed_by_habit, missed_by_habit)
-    drop = max(0, previous_7["percent"] - last_7["percent"])
-
-    return {
-        "habits_count": len(habits),
-        "last_7": last_7,
-        "previous_7": previous_7,
-        "last_30": last_30,
-        "drop_percent": drop,
-        "drop_alert": drop > 15,
-    }
-
-
-async def has_efficiency_alert(user_id: int, alert_date: str | None = None) -> bool:
-    alert_date = alert_date or today_str()
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT 1
-            FROM efficiency_alerts
-            WHERE user_id = ? AND alert_date = ?
-        """, (user_id, alert_date))
-        return await cursor.fetchone() is not None
-
-
-async def record_efficiency_alert(user_id: int, current_rate: int, previous_rate: int, drop_percent: int, alert_date: str | None = None) -> bool:
-    alert_date = alert_date or today_str()
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            INSERT OR IGNORE INTO efficiency_alerts
-            (user_id, alert_date, current_rate, previous_rate, drop_percent, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (user_id, alert_date, current_rate, previous_rate, drop_percent, datetime.now().isoformat(timespec="seconds")))
-        await db.commit()
-        return cursor.rowcount > 0
 
 async def save_sleep_log(user_id: int, sleep_date: str, sleep_out: str, sleep_up: str, rate: int) -> bool:
     if not 1 <= rate <= 5:

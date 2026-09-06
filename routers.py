@@ -11,15 +11,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 
 from bot import bot
 from db import (
-    get_all_users_with_habits,
     get_due_habit_reminders,
     get_missed_habit_ids,
-    get_user_efficiency_report,
     get_user_habits,
-    has_efficiency_alert,
     is_habit_missed,
     mark_habit_completed,
-    record_efficiency_alert,
     record_habit_miss,
     today_str,
     unmark_habit_completed,
@@ -116,14 +112,15 @@ async def open_mini_app(message: types.Message, state: FSMContext):
 @router.message(Command("stats"))
 async def statistics(message: types.Message, state: FSMContext):
     await state.clear()
-    report = await get_user_efficiency_report(message.from_user.id)
+    habits = await get_user_habits(message.from_user.id)
+    missed_ids = set(await get_missed_habit_ids(message.from_user.id))
+    done = sum(1 for habit in habits if habit[5] == today_str())
+    open_count = sum(1 for habit in habits if habit[5] != today_str() and habit[0] not in missed_ids)
     text = (
-        f"{report['last_7']['status']}\n"
-        f"30 дней: {report['last_30']['status']}\n"
-        f"Предыдущие 7 дней: {report['previous_7']['percent']}%"
+        f"Привычек: {len(habits)}\n"
+        f"Сегодня отмечено: {done}\n"
+        f"Ждёт отметки: {open_count}"
     )
-    if report["drop_alert"]:
-        text += f"\n\nПадение за неделю: {report['drop_percent']}%."
     await message.answer(text, reply_markup=main_keyboard)
 
 
@@ -188,36 +185,10 @@ async def send_habit_reminder_to_user(
         logger.error("Не удалось отправить напоминание habit_id=%s user_id=%s: %s", habit_id, user_id, error)
 
 
-async def send_efficiency_drop_alert(user_id: int):
-    report = await get_user_efficiency_report(user_id)
-    if not report["drop_alert"] or await has_efficiency_alert(user_id):
-        return
-
-    drop = report["drop_percent"]
-    try:
-        await bot.send_message(
-            chat_id=user_id,
-            text=f"Зафиксировано падение эффективности за неделю на {drop}%. Проверь режим и отдохни.",
-        )
-    except Exception as error:
-        logger.error("Не удалось отправить alert эффективности user_id=%s: %s", user_id, error)
-        return
-
-    await record_efficiency_alert(
-        user_id,
-        report["last_7"]["percent"],
-        report["previous_7"]["percent"],
-        drop,
-    )
-
-
 async def daily_reminder():
     current_time = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%H:%M")
     try:
         for user_id, habit_id, name, last_completed in await get_due_habit_reminders(current_time):
             await send_habit_reminder_to_user(user_id, habit_id, name, last_completed)
-
-        for user_id in await get_all_users_with_habits():
-            await send_efficiency_drop_alert(user_id)
     except Exception as error:
         logger.error("Ошибка daily_reminder: %s", error, exc_info=True)

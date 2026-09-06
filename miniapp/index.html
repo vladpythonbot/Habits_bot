@@ -8,733 +8,84 @@
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f6f7fb;
-      --surface: #ffffff;
-      --surface-soft: #eef1f6;
-      --text: #202331;
-      --muted: #667084;
-      --line: #dde3ed;
-      --ink: #202331;
-      --mint: #147d64;
-      --mint-soft: #e4f3ed;
-      --sky: #4059ad;
-      --sky-soft: #e8edff;
-      --coral: #ba4b54;
-      --coral-soft: #fae8e9;
-      --sun: #9b6a1d;
-      --sun-soft: #fbefd8;
-      --danger: #bf3b4a;
-      --shadow: 0 12px 28px rgba(28, 38, 64, .08);
+      --bg: #0f141d;
+      --panel: #171f2b;
+      --soft: #202a38;
+      --text: #f6f7fb;
+      --muted: #a7b0bf;
+      --line: #2b3648;
+      --accent: #36b37e;
+      --blue: #4f7cff;
+      --yellow: #f5c84c;
+      --danger: #ef5f73;
     }
-
     * { box-sizing: border-box; }
-
     body {
       margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
     }
-
-    main {
-      width: min(900px, 100%);
-      margin: 0 auto;
-      padding: 16px 12px 28px;
-    }
-
-    header,
-    .section-head,
-    .item-top,
-    .habit-progress-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-    }
-
+    main { width: min(720px, 100%); margin: 0 auto; padding: 14px 12px 26px; }
+    header, .row, .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     header { margin-bottom: 12px; }
-
-    h1,
-    h2,
-    h3,
-    p {
-      margin: 0;
-      letter-spacing: 0;
-    }
-
-    h1 {
-      font-size: 27px;
-      line-height: 1.08;
-    }
-
-    h2 {
-      font-size: 17px;
-      line-height: 1.25;
-    }
-
-    h3 {
-      font-size: 15px;
-      line-height: 1.25;
-    }
-
-    .muted,
-    .date,
-    .status,
-    .metric-label {
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.35;
-    }
-
-    .pill,
-    .chip,
-    .delta,
-    .status {
-      min-height: 28px;
-      border-radius: 999px;
-      padding: 5px 10px;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    .tabs {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
-      margin-bottom: 12px;
-      padding: 4px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface);
-    }
-
-    button {
+    h1, h2, p { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 24px; line-height: 1.1; }
+    h2 { font-size: 17px; }
+    .muted { color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
+    button, input, select {
       min-height: 40px;
-      border: 0;
       border-radius: 8px;
-      padding: 0 12px;
-      background: var(--mint);
-      color: white;
+      border: 1px solid var(--line);
       font: inherit;
-      font-weight: 700;
-      cursor: pointer;
     }
-
-    button.secondary {
-      background: var(--surface-soft);
-      color: var(--text);
-      border: 1px solid var(--line);
-    }
-
-    button.ghost {
-      background: transparent;
-      color: var(--muted);
-      border: 1px solid var(--line);
-    }
-
-    button.danger {
-      background: transparent;
-      color: var(--danger);
-      border: 1px solid var(--line);
-    }
-
-    button.active {
-      background: var(--ink);
-      color: white;
-    }
-
-    .panel,
-    .metric-card,
-    .habit-card,
-    .habit-stat-card {
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-    }
-
+    button { background: var(--soft); color: var(--text); font-weight: 700; cursor: pointer; padding: 0 11px; }
+    button.active, button.primary { background: var(--accent); border-color: var(--accent); color: #06150f; }
+    button.ghost { background: transparent; color: var(--muted); }
+    button.danger { background: transparent; color: var(--danger); }
+    button.icon { width: 40px; padding: 0; }
+    input, select { width: 100%; background: var(--panel); color: var(--text); padding: 0 11px; }
     .panel {
-      padding: 14px;
-      margin-bottom: 12px;
-    }
-
-    .today-card {
-      display: grid;
-      grid-template-columns: 128px 1fr;
-      gap: 16px;
-      align-items: center;
-      min-height: 170px;
-      background: var(--mint-soft);
-      border-color: #c8eadb;
-    }
-
-    .ring {
-      --value: 0deg;
-      width: 118px;
-      aspect-ratio: 1;
-      border-radius: 50%;
-      display: grid;
-      place-items: center;
-      background: conic-gradient(var(--mint) var(--value), rgba(255, 255, 255, .72) 0);
-      position: relative;
-    }
-
-    .ring::after {
-      content: "";
-      position: absolute;
-      inset: 11px;
-      border-radius: 50%;
-      background: var(--surface);
-    }
-
-    .ring b {
-      position: relative;
-      z-index: 1;
-      color: var(--mint);
-      font-size: 27px;
-      line-height: 1;
-    }
-
-    .today-copy {
-      display: grid;
-      gap: 10px;
-      min-width: 0;
-    }
-
-    .today-copy strong {
-      font-size: 22px;
-      line-height: 1.14;
-      overflow-wrap: anywhere;
-    }
-
-    .today-mini {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .metrics-row {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .metric-card {
-      min-height: 78px;
-      padding: 12px;
-      display: grid;
-      align-content: center;
-      gap: 6px;
-    }
-
-    .metric-card b {
-      display: block;
-      font-size: 23px;
-      line-height: 1.05;
-      color: var(--ink);
-      overflow-wrap: anywhere;
-    }
-
-    .metric-card.mint { background: var(--mint-soft); }
-    .metric-card.mint b { color: var(--mint); }
-    .metric-card.sky { background: var(--sky-soft); }
-    .metric-card.sky b { color: var(--sky); }
-    .metric-card.sun { background: var(--sun-soft); }
-    .metric-card.sun b { color: var(--sun); }
-    .metric-card.coral { background: var(--coral-soft); }
-    .metric-card.coral b { color: var(--coral); }
-
-    .week-strip {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .week-day {
-      min-height: 70px;
-      display: grid;
-      place-items: center;
-      align-content: center;
-      gap: 6px;
+      background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: var(--surface-soft);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
+      padding: 13px;
+      margin-bottom: 10px;
     }
-
-    .week-dot {
-      width: 18px;
-      aspect-ratio: 1;
-      border-radius: 50%;
-      background: #d7e5da;
-    }
-
-    .week-dot.level-1 { background: #bfe9d4; }
-    .week-dot.level-2 { background: #70caa2; }
-    .week-dot.level-3 { background: var(--mint); }
-
-    .insight-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .insight {
-      display: grid;
-      gap: 8px;
-      min-height: 104px;
-      align-content: start;
-    }
-
-    .insight strong {
-      font-size: 20px;
-      line-height: 1.12;
-      overflow-wrap: anywhere;
-    }
-
-    .delta.up { background: var(--mint-soft); color: var(--mint); border-color: #c8eadb; }
-    .delta.down { background: var(--coral-soft); color: var(--coral); border-color: #f5c9c3; }
-    .delta.flat { background: var(--sky-soft); color: var(--sky); border-color: #cddcff; }
-
-    .habit-stats {
-      display: grid;
-      gap: 10px;
-    }
-
-    .today-list {
-      display: grid;
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-
-    .today-habit {
-      padding: 12px;
-      display: grid;
-      gap: 12px;
-      cursor: pointer;
-    }
-
-    .mark-actions {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .mark-actions button {
-      min-height: 38px;
-      padding: 0 8px;
-    }
-
-    .habit-stat-card {
-      padding: 12px;
-      display: grid;
-      gap: 10px;
-      cursor: pointer;
-    }
-
-    .habit-progress-head {
-      align-items: flex-start;
-    }
-
-    .habit-progress-title {
-      display: grid;
-      gap: 4px;
-      min-width: 0;
-    }
-
-    .habit-progress-title strong,
-    .habit-name {
-      font-size: 16px;
-      line-height: 1.25;
-      overflow-wrap: anywhere;
-    }
-
-    .rate-track {
-      width: 100%;
-      height: 9px;
-      border-radius: 99px;
-      background: #dbe8de;
-      overflow: hidden;
-    }
-
-    .sleep-card {
-      background: #111827;
-      color: #f8fafc;
-      border-color: #263449;
-    }
-
-    .sleep-form {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      margin: 12px 0;
-    }
-
-    .sleep-rate-buttons {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 6px;
-      grid-column: 1 / -1;
-    }
-
-    .sleep-rate-buttons button {
-      background: #243b62;
-      color: #eaf2ff;
-      min-height: 36px;
-      padding: 0;
-    }
-
+    .hidden { display: none; }
+    .list { display: grid; gap: 10px; }
+    .empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center; }
+    .today-card, .habit-card { display: grid; gap: 10px; }
+    .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .habit-actions { display: grid; grid-template-columns: 40px 40px 1fr 1fr; gap: 8px; }
+    .settings { display: grid; gap: 8px; grid-template-columns: 1fr; }
+    .add-form, .reminder-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .sleep-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+    .sleep-rate { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; grid-column: 1 / -1; }
     .sleep-chart {
+      position: relative;
       min-height: 180px;
       display: grid;
+      grid-template-columns: repeat(7, 1fr);
       align-items: end;
       gap: 8px;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      border-top: 1px solid rgba(255,255,255,.12);
-      padding-top: 14px;
-      position: relative;
-    }
-
-    .sleep-line {
-      position: absolute;
-      inset: 20px 0 42px;
-      width: 100%;
-      height: 112px;
-      overflow: visible;
-      pointer-events: none;
-    }
-
-    .sleep-line polyline {
-      fill: none;
-      stroke: #facc15;
-      stroke-width: 4;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
-    .sleep-day {
-      min-width: 0;
-      display: grid;
-      gap: 6px;
-      align-items: end;
-      color: #cbd5e1;
-      font-size: 11px;
-      text-align: center;
-    }
-
-    .sleep-bar-wrap {
-      height: 112px;
-      display: grid;
-      align-items: end;
-      position: relative;
-    }
-
-    .sleep-bar {
-      min-height: 2px;
-      border-radius: 6px 6px 2px 2px;
-      background: linear-gradient(180deg, #8b5cf6, #2563eb);
-    }
-
-    .sleep-rate-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #facc15;
-      border: 2px solid #22c55e;
-      justify-self: center;
-    }
-
-    .rate-fill {
-      height: 100%;
-      width: var(--width);
-      border-radius: inherit;
-      background: var(--mint);
-    }
-
-    .habit-meta {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .habit-meta span {
-      min-height: 48px;
-      border-radius: 8px;
-      background: var(--surface-soft);
-      padding: 8px;
-      display: grid;
-      gap: 2px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .habit-meta b {
-      color: var(--text);
-      font-size: 15px;
-      line-height: 1.1;
-    }
-
-    .form-panel {
-      display: grid;
-      gap: 10px;
-    }
-
-    form,
-    .inline-form {
-      display: grid;
-      gap: 8px;
-      margin: 0;
-    }
-
-    .add-row {
-      grid-template-columns: 1fr auto;
-    }
-
-    input,
-    select {
-      width: 100%;
-      min-width: 0;
-      height: 42px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      padding: 0 11px;
-      background: var(--surface);
-      color: var(--text);
-      font: inherit;
-    }
-
-    select {
-      appearance: none;
-      background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-      background-position: calc(100% - 18px) 18px, calc(100% - 13px) 18px;
-      background-size: 5px 5px, 5px 5px;
-      background-repeat: no-repeat;
-      padding-right: 32px;
-    }
-
-    input:disabled {
-      color: var(--muted);
-      background: var(--surface-soft);
-    }
-
-    .list {
-      display: grid;
-      gap: 10px;
-    }
-
-    .habit-card {
-      padding: 12px;
-    }
-
-    .item-title {
-      display: grid;
-      gap: 4px;
-      min-width: 0;
-    }
-
-    .status.done {
-      color: var(--mint);
-      background: var(--mint-soft);
-      border-color: #c8eadb;
-    }
-
-    .status.open {
-      color: var(--sun);
-      background: var(--sun-soft);
-      border-color: #efd29c;
-    }
-
-    .actions {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .settings {
-      display: grid;
-      gap: 8px;
-      margin-top: 10px;
-      padding-top: 10px;
+      padding-top: 16px;
       border-top: 1px solid var(--line);
     }
-
-    .reminder-row {
-      grid-template-columns: 50px 1fr auto;
-    }
-
-    .goal-row {
-      grid-template-columns: 50px 1fr;
-      align-items: center;
-    }
-
-    .empty,
-    .error {
-      border: 1px dashed var(--line);
-      border-radius: 8px;
-      padding: 18px;
-      color: var(--muted);
-      text-align: center;
-      background: var(--surface-soft);
-    }
-
-    .hidden { display: none; }
-
-    .modal {
-      position: fixed;
-      inset: 0;
-      z-index: 10;
-      display: grid;
-      place-items: end center;
-      padding: 16px 12px;
-      background: rgba(20, 28, 24, .32);
-    }
-
+    .sleep-line { position: absolute; inset: 22px 0 42px; width: 100%; height: 112px; pointer-events: none; }
+    .sleep-line polyline { fill: none; stroke: var(--yellow); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+    .sleep-day { min-width: 0; display: grid; gap: 6px; text-align: center; color: var(--muted); font-size: 11px; }
+    .bar-wrap { height: 112px; display: grid; align-items: end; position: relative; }
+    .bar { min-height: 2px; border-radius: 6px 6px 2px 2px; background: linear-gradient(180deg, #8b5cf6, var(--blue)); }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--yellow); justify-self: center; border: 2px solid var(--accent); }
+    .modal { position: fixed; inset: 0; z-index: 5; display: grid; place-items: end center; padding: 14px 12px; background: rgba(0,0,0,.45); }
     .modal.hidden { display: none; }
-
-    .detail-card {
-      width: min(620px, 100%);
-      max-height: 86vh;
-      overflow: auto;
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: 0 18px 40px rgba(20, 28, 24, .22);
-      padding: 14px;
-      display: grid;
-      gap: 12px;
-    }
-
-    .delete-card {
-      width: min(420px, 100%);
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: 0 18px 40px rgba(20, 28, 24, .22);
-      padding: 16px;
-      display: grid;
-      gap: 12px;
-    }
-
-    .modal-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .modal-actions button {
-      width: 100%;
-      justify-content: center;
-    }
-
-    .modal-field {
-      width: 100%;
-      min-height: 46px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface-soft);
-      color: var(--text);
-      font: inherit;
-      padding: 0 12px;
-      outline: none;
-    }
-
-    .modal-field:focus {
-      border-color: var(--mint);
-      box-shadow: 0 0 0 3px rgba(34, 197, 94, .12);
-    }
-
-    .calendar-grid {
-      display: grid;
-      grid-template-columns: repeat(10, minmax(0, 1fr));
-      gap: 5px;
-    }
-
-    .calendar-day {
-      aspect-ratio: 1;
-      border-radius: 6px;
-      background: var(--surface-soft);
-      border: 1px solid var(--line);
-      color: var(--text);
-      cursor: pointer;
-      font: inherit;
-      font-size: 11px;
-      line-height: 1;
-      padding: 0;
-      transition: transform .12s ease, border-color .12s ease, background .12s ease;
-    }
-
-    .calendar-day:active {
-      transform: scale(.94);
-    }
-
-    .calendar-day.done {
-      background: var(--mint);
-      border-color: var(--mint);
-      color: #07130d;
-    }
-
-    .calendar-day.skipped {
-      background: transparent;
-      border-style: dashed;
-      opacity: .55;
-    }
-
-    .calendar-day.future {
-      opacity: .35;
-      cursor: default;
-      pointer-events: none;
-    }
-
-    @media (max-width: 680px) {
-      .today-card { grid-template-columns: 96px 1fr; }
-      .ring { width: 92px; }
-      .metrics-row,
-      .insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .week-strip { gap: 5px; }
-      .habit-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .mark-actions { grid-template-columns: 1fr; }
-      .reminder-row { grid-template-columns: 44px 1fr; }
-      .reminder-row button { grid-column: 1 / -1; }
-      .status { white-space: normal; text-align: right; }
-    }
-
-    @media (max-width: 420px) {
-      main { padding-inline: 10px; }
-      .metrics-row { grid-template-columns: 1fr 1fr; }
-      .add-row { grid-template-columns: 1fr; }
-      .today-card { grid-template-columns: 1fr; }
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #11151f;
-        --surface: #181f2a;
-        --surface-soft: #222b39;
-        --text: #f5f3ee;
-        --muted: #b3aca3;
-        --line: #30394a;
-        --ink: #f5f3ee;
-        --mint-soft: #14382e;
-        --sky-soft: #172b55;
-        --coral-soft: #3a2225;
-        --sun-soft: #3b2d16;
-        --shadow: none;
-      }
-
-      .today-card { border-color: #245543; }
-      .ring::after { background: var(--surface); }
-      .rate-track,
-      .week-dot { background: #344053; }
-      button.active { color: #11151f; }
+    .modal-card { width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: grid; gap: 10px; }
+    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 460px) {
+      .actions, .habit-actions, .add-form, .reminder-form { grid-template-columns: 1fr; }
+      .habit-actions .icon { width: 100%; }
     }
   </style>
 </head>
@@ -743,186 +94,62 @@
     <header>
       <div>
         <h1>HabitFlow</h1>
-        <div class="date" id="today">Сегодня</div>
+        <p class="muted" id="today-label">Сегодня</p>
       </div>
-      <span class="pill">Today</span>
+      <p class="muted" id="hello"></p>
     </header>
 
     <nav class="tabs">
-      <button class="active" id="today-tab" type="button">Сегодня</button>
-      <button class="secondary" id="stats-tab" type="button">Прогресс</button>
-      <button class="secondary" id="manage-tab" type="button">Управление</button>
+      <button class="active" id="tab-today" type="button">Сегодня</button>
+      <button id="tab-sleep" type="button">Сон</button>
+      <button id="tab-manage" type="button">Привычки</button>
     </nav>
 
-    <section id="today-view">
-      <div class="panel today-card">
-        <div class="ring" id="ring"><b id="rate">0%</b></div>
-        <div class="today-copy">
-          <strong id="summary-title">Пока собираем статистику</strong>
-          <p class="muted" id="summary-copy">Сегодняшний прогресс появится после отметок.</p>
-          <div class="today-mini">
-            <span class="chip" id="today-score">0/0 сегодня</span>
-            <span class="chip" id="week-score">0% за 7 дней</span>
-          </div>
-        </div>
+    <section id="view-today">
+      <div class="panel">
+        <h2 id="summary">Загрузка</h2>
+        <p class="muted">Без процентов. Просто отмечаем день и не устраиваем бухгалтерию души.</p>
       </div>
-
-      <div class="section-head">
-        <h2>Отметить сегодня</h2>
-        <span class="muted" id="today-left">0 осталось</span>
-      </div>
-      <div class="today-list" id="today-list"></div>
+      <div class="list" id="today-list"></div>
     </section>
 
-    <section id="stats-view" class="hidden">
-      <div class="metrics-row">
-        <div class="metric-card mint">
-          <b id="streak-score">0</b>
-          <span class="metric-label">лучшая серия</span>
-        </div>
-        <div class="metric-card sky">
-          <b id="month-score">0%</b>
-          <span class="metric-label">30 дней</span>
-        </div>
-        <div class="metric-card sun">
-          <b id="perfect-score">0</b>
-          <span class="metric-label">идеальных дней</span>
-        </div>
-        <div class="metric-card coral">
-          <b id="trend-score">0%</b>
-          <span class="metric-label">тренд</span>
-        </div>
-      </div>
-
-      <div class="panel sleep-card">
-        <div class="section-head">
+    <section id="view-sleep" class="hidden">
+      <div class="panel">
+        <div class="top">
           <h2>Сон</h2>
-          <span class="muted">7 дней</span>
+          <span class="muted">последние 7 дней</span>
         </div>
         <form class="sleep-form" id="sleep-form">
           <input id="sleep-out" type="time" value="23:30" aria-label="Лёг спать">
           <input id="sleep-up" type="time" value="07:30" aria-label="Проснулся">
-          <div class="sleep-rate-buttons" id="sleep-rate-buttons">
-            <button type="button" data-sleep-rate="1">1</button>
-            <button type="button" data-sleep-rate="2">2</button>
-            <button type="button" data-sleep-rate="3">3</button>
-            <button type="button" data-sleep-rate="4">4</button>
-            <button type="button" data-sleep-rate="5">5</button>
+          <div class="sleep-rate" id="sleep-rate">
+            <button type="button" data-rate="1">1</button>
+            <button type="button" data-rate="2">2</button>
+            <button type="button" data-rate="3">3</button>
+            <button type="button" data-rate="4">4</button>
+            <button type="button" data-rate="5">5</button>
           </div>
         </form>
         <div class="sleep-chart" id="sleep-chart"></div>
       </div>
-
-      <div class="panel">
-        <div class="section-head">
-          <h2>Неделя</h2>
-          <span class="muted" id="best-day">Лучший день: -</span>
-        </div>
-        <div class="week-strip" id="week-strip"></div>
-      </div>
-
-      <div class="insight-grid">
-        <div class="panel insight">
-          <span class="muted">Лучший ритм</span>
-          <strong id="best-habit">-</strong>
-          <p class="muted" id="best-habit-copy">Нет данных</p>
-        </div>
-        <div class="panel insight">
-          <span class="muted">Фокус</span>
-          <strong id="focus-habit">-</strong>
-          <p class="muted" id="focus-habit-copy">Нет данных</p>
-        </div>
-        <div class="panel insight">
-          <span class="muted">Активность</span>
-          <strong id="active-days">0 дней</strong>
-          <span class="delta flat" id="trend-badge">0%</span>
-        </div>
-        <div class="panel insight">
-          <span class="muted">Средняя серия</span>
-          <strong id="average-streak">0</strong>
-          <p class="muted">по всем привычкам</p>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="section-head">
-          <h2>Привычки</h2>
-          <span class="muted">30 дней</span>
-        </div>
-        <div class="habit-stats" id="habit-stats"></div>
-      </div>
     </section>
 
-    <section id="manage-view" class="hidden">
-      <div class="panel form-panel">
-        <h2>Добавить привычку</h2>
-        <form class="add-row" id="add-form">
-          <input id="habit-name" maxlength="80" placeholder="Например: выпить воду" autocomplete="off">
-          <button type="submit">Добавить</button>
-        </form>
-      </div>
-
-      <div class="section-head">
-        <h2>Управление</h2>
-        <span class="muted">Привычки и напоминания</span>
-      </div>
-      <div class="list" id="list">
-        <div class="empty">Загрузка...</div>
-      </div>
+    <section id="view-manage" class="hidden">
+      <form class="panel add-form" id="add-form">
+        <input id="habit-name" maxlength="80" placeholder="Новая привычка" autocomplete="off">
+        <button class="primary" type="submit">Добавить</button>
+      </form>
+      <div class="list" id="habit-list"></div>
     </section>
   </main>
 
-  <datalist id="reminder-presets">
-    <option value="08:00" label="Утро"></option>
-    <option value="13:00" label="День"></option>
-    <option value="20:00" label="Вечер"></option>
-    <option value="09:00, 14:00, 20:00" label="Часто"></option>
-  </datalist>
-
-  <div class="modal hidden" id="detail-modal">
-    <div class="detail-card">
-      <div class="section-head">
-        <div>
-          <h2 id="detail-title">Привычка</h2>
-          <p class="muted" id="detail-subtitle">30 дней</p>
-        </div>
-        <button class="ghost" id="detail-close" type="button">Закрыть</button>
-      </div>
-      <div class="habit-meta">
-        <span><b id="detail-rate">0%</b>ритм</span>
-        <span><b id="detail-streak">0</b>серия</span>
-        <span><b id="detail-week">0/0</b>7 дней</span>
-        <span><b id="detail-missed">0</b>пропусков</span>
-        <span><b id="detail-best">0</b>лучшая серия</span>
-        <span><b id="detail-total">0</b>всего</span>
-      </div>
-      <div class="calendar-grid" id="detail-calendar"></div>
-    </div>
-  </div>
-
   <div class="modal hidden" id="rename-modal">
-    <div class="delete-card">
-      <div>
-        <h2>Переименовать привычку</h2>
-        <p class="muted">Новое название будет видно в списке и статистике.</p>
-      </div>
-      <input class="modal-field" id="rename-input" maxlength="80" autocomplete="off">
+    <div class="modal-card">
+      <h2>Переименовать</h2>
+      <input id="rename-input" maxlength="80">
       <div class="modal-actions">
         <button class="ghost" id="rename-cancel" type="button">Отмена</button>
-        <button id="rename-confirm" type="button">Сохранить</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal hidden" id="delete-modal">
-    <div class="delete-card">
-      <div>
-        <h2>Удалить привычку?</h2>
-        <p class="muted" id="delete-copy">История отметок тоже исчезнет.</p>
-      </div>
-      <div class="modal-actions">
-        <button class="ghost" id="delete-cancel" type="button">Отмена</button>
-        <button class="danger" id="delete-confirm" type="button">Удалить</button>
+        <button class="primary" id="rename-save" type="button">Сохранить</button>
       </div>
     </div>
   </div>
@@ -933,101 +160,73 @@
     tg?.expand();
 
     const initData = tg?.initData || "";
-    const state = { data: null, stats: null, tab: "today", detailHabitId: null };
+    const state = { data: null, sleep: null, tab: "today", rename: null };
+    const $ = (selector) => document.querySelector(selector);
+    const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+    }[char]));
 
-    const todayTab = document.querySelector("#today-tab");
-    const statsTab = document.querySelector("#stats-tab");
-    const manageTab = document.querySelector("#manage-tab");
-    const todayView = document.querySelector("#today-view");
-    const statsView = document.querySelector("#stats-view");
-    const manageView = document.querySelector("#manage-view");
-    const todayList = document.querySelector("#today-list");
-    const list = document.querySelector("#list");
-    const form = document.querySelector("#add-form");
-    const input = document.querySelector("#habit-name");
-    const detailModal = document.querySelector("#detail-modal");
-    const renameModal = document.querySelector("#rename-modal");
-    const renameInput = document.querySelector("#rename-input");
-    const renameCancel = document.querySelector("#rename-cancel");
-    const renameConfirm = document.querySelector("#rename-confirm");
-    const deleteModal = document.querySelector("#delete-modal");
-    const deleteCopy = document.querySelector("#delete-copy");
-    const deleteCancel = document.querySelector("#delete-cancel");
-    const deleteConfirm = document.querySelector("#delete-confirm");
-    let pendingRename = null;
-    let pendingDelete = null;
-
-    async function request(path, payload = {}) {
+    async function request(path, body = {}, method = "POST") {
       const response = await fetch(path, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Telegram-Init-Data": initData,
-        },
-        body: JSON.stringify({ _auth: initData, ...payload }),
+        method,
+        headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": initData },
+        body: body === null ? undefined : JSON.stringify(body),
       });
       if (!response.ok) throw new Error(await response.text());
       return response.json();
-    }
-
-    async function requestGet(path) {
-      const response = await fetch(path, {
-        headers: { "X-Telegram-Init-Data": initData },
-      });
-      if (!response.ok) throw new Error(await response.text());
-      return response.json();
-    }
-
-    function escapeHtml(value) {
-      return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
     }
 
     function setTab(tab) {
       state.tab = tab;
-      const today = tab === "today";
-      const stats = tab === "stats";
-      const manage = tab === "manage";
-      todayView.classList.toggle("hidden", !today);
-      statsView.classList.toggle("hidden", !stats);
-      manageView.classList.toggle("hidden", !manage);
-      todayTab.classList.toggle("active", today);
-      todayTab.classList.toggle("secondary", !today);
-      statsTab.classList.toggle("active", stats);
-      statsTab.classList.toggle("secondary", !stats);
-      manageTab.classList.toggle("active", manage);
-      manageTab.classList.toggle("secondary", !manage);
+      ["today", "sleep", "manage"].forEach((name) => {
+        $(`#view-${name}`).classList.toggle("hidden", name !== tab);
+        $(`#tab-${name}`).classList.toggle("active", name === tab);
+      });
     }
 
-    function level(value, max) {
-      if (!value) return 0;
-      if (value >= max) return 3;
-      if (value >= Math.ceil(max / 2)) return 2;
-      return 1;
+    async function refresh() {
+      const [data, sleep] = await Promise.all([
+        request("/api/state", null, "GET"),
+        request("/api/sleep/stats", null, "GET"),
+      ]);
+      state.data = data;
+      state.sleep = sleep;
+      render();
     }
 
-    function trendLabel(value) {
-      if (value > 0) return `+${value}%`;
-      if (value < 0) return `${value}%`;
-      return "0%";
+    function render() {
+      const data = state.data || { habits: [], summary: {} };
+      $("#today-label").textContent = data.today || "Сегодня";
+      $("#hello").textContent = data.user?.first_name || "";
+      renderToday(data);
+      renderManage(data);
+      renderSleep(state.sleep?.items || []);
     }
 
-    function trendClass(value) {
-      if (value > 0) return "delta up";
-      if (value < 0) return "delta down";
-      return "delta flat";
-    }
-
-    function dayLabel(date) {
-      return date.slice(5).replace("-", ".");
-    }
-
-    function byId(items) {
-      return new Map((items || []).map((item) => [Number(item.id), item]));
+    function renderToday(data) {
+      const habits = data.habits || [];
+      const open = habits.filter((habit) => !habit.done_today && !habit.missed_today).length;
+      $("#summary").textContent = habits.length
+        ? `Сегодня: отмечено ${data.summary.done}, ждёт ${open}`
+        : "Добавь первую привычку";
+      $("#today-list").innerHTML = habits.length ? habits.map((habit) => {
+        const status = habit.done_today ? "готово" : habit.missed_today ? "не сегодня" : "ждёт";
+        return `
+          <article class="panel today-card">
+            <div class="top">
+              <div>
+                <h2>${escapeHtml(habit.name)}</h2>
+                <p class="muted">${escapeHtml(habit.goal_text)} · серия ${habit.streak} · ${status}</p>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="primary" data-action="mark" data-id="${habit.id}" type="button">Выполнил</button>
+              <button class="ghost" data-action="miss" data-id="${habit.id}" type="button">Не сегодня</button>
+              <button class="ghost" data-action="undo" data-id="${habit.id}" type="button">Отмена</button>
+            </div>
+          </article>
+        `;
+      }).join("") : '<div class="empty">Привычек пока нет. Начни с одной маленькой.</div>';
     }
 
     function goalValue(habit) {
@@ -1035,187 +234,61 @@
       return habit.goal_type || "daily";
     }
 
-    function goalPayload(value) {
-      if (value.startsWith("weekly_")) {
-        return { goal_type: "weekly", goal_value: Number(value.replace("weekly_", "")) || 3 };
-      }
-      if (value === "weekdays") return { goal_type: "weekdays", goal_value: 5 };
-      return { goal_type: "daily", goal_value: 7 };
-    }
-
     function goalOptions(selected) {
-      const options = [
+      return [
         ["daily", "Каждый день"],
         ["weekdays", "По будням"],
         ["weekly_3", "3 раза в неделю"],
         ["weekly_5", "5 раз в неделю"],
-      ];
-      return options.map(([value, label]) => (
-        `<option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>`
-      )).join("");
+      ].map(([value, label]) => `<option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>`).join("");
     }
 
-    async function refreshAll() {
-      const [data, stats, sleep] = await Promise.all([
-        request("/api/state"),
-        request("/api/stats"),
-        requestGet("/api/sleep/stats"),
-      ]);
-      state.data = data;
-      state.stats = stats;
-      state.sleep = sleep;
-      renderToday(data, stats);
-      renderStats(stats);
-      renderSleep(sleep.items || []);
-      renderManage(data);
+    function goalPayload(value) {
+      if (value.startsWith("weekly_")) return { goal_type: "weekly", goal_value: Number(value.slice(7)) };
+      return { goal_type: value };
     }
 
-    function renderToday(data, stats) {
+    function renderManage(data) {
       const habits = data.habits || [];
-      const open = habits.filter((habit) => !habit.done_today && !habit.missed_today).length;
-      document.querySelector("#today-left").textContent = `${open} осталось`;
-
-      if (!habits.length) {
-        todayList.innerHTML = '<div class="empty">Пока нет привычек. Добавь первую во вкладке управления.</div>';
-        return;
-      }
-
-      const statsMap = byId(stats.habit_rows);
-      todayList.innerHTML = habits.map((habit) => {
-        const row = statsMap.get(Number(habit.id));
-        const rate = row?.completion_rate || 0;
-        const status = habit.done_today ? "done" : "open";
-        const statusText = habit.done_today ? "готово" : (habit.missed_today ? "не сегодня" : "ждёт отметки");
-        return `
-          <article class="today-habit panel" data-action="detail" data-id="${habit.id}">
-            <div class="habit-progress-head">
-              <div class="habit-progress-title">
-                <strong>${escapeHtml(habit.name)}</strong>
-                <span class="muted">${escapeHtml(habit.goal_text)} · серия ${habit.streak} · ${rate}% за 30 дней</span>
-              </div>
-              <span class="status ${status}">${statusText}</span>
-            </div>
-            <div class="rate-track"><div class="rate-fill" style="--width:${rate}%"></div></div>
-          </article>
-        `;
-      }).join("");
-    }
-
-    function openDetail(habitId) {
-      const habit = (state.stats?.habit_rows || []).find((item) => Number(item.id) === Number(habitId));
-      if (!habit) return;
-      state.detailHabitId = Number(habitId);
-      document.querySelector("#detail-title").textContent = habit.name;
-      document.querySelector("#detail-subtitle").textContent = `${habit.goal_text} · ${habit.period_completed}/${habit.possible} за 30 дней`;
-      document.querySelector("#detail-rate").textContent = `${habit.completion_rate}%`;
-      document.querySelector("#detail-streak").textContent = habit.streak;
-      document.querySelector("#detail-week").textContent = `${habit.last_7_completed}/${habit.last_7_possible}`;
-      document.querySelector("#detail-missed").textContent = habit.missed_count;
-      document.querySelector("#detail-best").textContent = habit.best_streak || habit.streak || 0;
-      document.querySelector("#detail-total").textContent = habit.total_completed || 0;
-      document.querySelector("#detail-calendar").innerHTML = habit.calendar.map((day) => {
-        const className = `calendar-day ${day.done ? "done" : ""} ${day.expected ? "" : "skipped"} ${day.available ? "" : "future"}`;
-        return `
-          <button class="${className}" type="button" data-action="calendar-day" data-id="${habit.id}" data-date="${day.date}" data-done="${day.done ? "1" : "0"}" title="${day.date}">
-            ${day.date.slice(8)}
-          </button>
-        `;
-      }).join("");
-      detailModal.classList.remove("hidden");
-    }
-
-    function renderStats(stats) {
-      const rate = Math.max(0, Math.min(100, stats.efficiency_7?.percent || 0));
-      const monthRate = Math.max(0, Math.min(100, stats.efficiency_30?.percent || 0));
-      const trend = stats.trend || 0;
-      const dailyValues = Object.values(stats.daily_done);
-      const max = Math.max(1, ...dailyValues);
-      const best = stats.dates.reduce((winner, date) => {
-        const value = stats.daily_done[date] || 0;
-        return value > winner.value ? { date, value } : winner;
-      }, { date: "-", value: 0 });
-
-      document.querySelector("#today").textContent = stats.today;
-      document.querySelector("#rate").textContent = `${rate}%`;
-      document.querySelector("#ring").style.setProperty("--value", `${Math.round(rate * 3.6)}deg`);
-      document.querySelector("#today-score").textContent = `${stats.today_done}/${stats.today_possible || stats.habits_count} сегодня`;
-      document.querySelector("#week-score").textContent = `${stats.efficiency_7?.percent || 0}% за 7 дней`;
-      document.querySelector("#streak-score").textContent = stats.best_streak || 0;
-      document.querySelector("#month-score").textContent = `${monthRate}%`;
-      document.querySelector("#perfect-score").textContent = stats.perfect_days || 0;
-      document.querySelector("#trend-score").textContent = `${stats.efficiency_drop_percent || 0}%`;
-      document.querySelector("#best-day").textContent = best.value ? `Лучший день: ${best.date} · ${best.value}` : "Лучший день: -";
-
-      const title = stats.efficiency_7?.status || "Пока собираем статистику";
-      const copy = stats.habits_count
-        ? `30 дней: ${stats.efficiency_30?.status || `${monthRate}%`}`
-        : "Добавь привычку во вкладке управления, а отметки делай в боте.";
-      document.querySelector("#summary-title").textContent = title;
-      document.querySelector("#summary-copy").textContent = copy;
-
-      const bestHabit = stats.best_habit;
-      const focusHabit = stats.focus_habit;
-      document.querySelector("#best-habit").textContent = bestHabit ? bestHabit.name : "-";
-      document.querySelector("#best-habit-copy").textContent = bestHabit
-        ? `${bestHabit.completion_rate}% за 30 дней · серия ${bestHabit.streak}`
-        : "Появится после первых отметок.";
-      document.querySelector("#focus-habit").textContent = focusHabit ? focusHabit.name : "-";
-      document.querySelector("#focus-habit-copy").textContent = focusHabit
-        ? `${focusHabit.completion_rate}% за 30 дней · пропусков ${focusHabit.missed_count}`
-        : "Пока нечего улучшать.";
-      document.querySelector("#active-days").textContent = `${stats.active_days || 0} из 29 дней`;
-      document.querySelector("#average-streak").textContent = stats.average_streak || 0;
-      const trendBadge = document.querySelector("#trend-badge");
-      trendBadge.textContent = `${stats.efficiency_drop_percent || 0}% падение`;
-      trendBadge.className = trendClass(trend);
-
-      document.querySelector("#week-strip").innerHTML = stats.dates.slice(-8, -1).map((date) => {
-        const value = stats.daily_done[date] || 0;
-        const possible = stats.daily_possible?.[date] || 0;
-        return `
-          <div class="week-day" title="${date}: ${value}/${possible}">
-            <span>${dayLabel(date)}</span>
-            <i class="week-dot level-${level(value, max)}"></i>
-            <span>${value}/${possible}</span>
-          </div>
-        `;
-      }).join("");
-
-      const rows = stats.habit_rows || [];
-      document.querySelector("#habit-stats").innerHTML = rows.length ? rows.map((habit) => `
-        <article class="habit-stat-card" data-action="detail" data-id="${habit.id}">
-          <div class="habit-progress-head">
-            <div class="habit-progress-title">
-              <strong>${escapeHtml(habit.name)}</strong>
-              <span class="muted">${habit.goal_text} · ${habit.period_completed}/${habit.possible} за 30 дней</span>
+      $("#habit-list").innerHTML = habits.length ? habits.map((habit, index) => `
+        <article class="panel habit-card">
+          <div class="top">
+            <div>
+              <h2>${escapeHtml(habit.name)}</h2>
+              <p class="muted">${escapeHtml(habit.goal_text)} · всего отметок ${habit.total_completed}</p>
             </div>
           </div>
-          <div class="rate-track"><div class="rate-fill" style="--width:${habit.completion_rate}%"></div></div>
-          <div class="habit-meta">
-            <span><b>${habit.completion_rate}%</b>ритм</span>
-            <span><b>${habit.streak}</b>серия</span>
-            <span><b>${habit.last_7_completed}/${habit.last_7_possible}</b>7 дней</span>
-            <span><b>${habit.best_streak || 0}</b>лучшая</span>
+          <div class="habit-actions">
+            <button class="icon ghost" data-action="move" data-direction="up" data-id="${habit.id}" ${index === 0 ? "disabled" : ""} type="button">↑</button>
+            <button class="icon ghost" data-action="move" data-direction="down" data-id="${habit.id}" ${index === habits.length - 1 ? "disabled" : ""} type="button">↓</button>
+            <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}" type="button">Название</button>
+            <button class="danger" data-action="delete" data-id="${habit.id}" type="button">Удалить</button>
+          </div>
+          <div class="settings">
+            <select data-action="goal" data-id="${habit.id}">${goalOptions(goalValue(habit))}</select>
+            <form class="reminder-form" data-id="${habit.id}">
+              <input name="reminder" placeholder="Напоминание, например 08:00" value="${escapeHtml(habit.reminder?.reminder_time || "")}">
+              <button type="submit">OK</button>
+            </form>
+            ${habit.reminder?.enabled ? `<button class="ghost" data-action="reminder-off" data-id="${habit.id}" type="button">Отключить напоминание</button>` : ""}
           </div>
         </article>
-      `).join("") : '<div class="empty">Нет привычек для анализа.</div>';
+      `).join("") : '<div class="empty">Список пуст.</div>';
     }
 
     function renderSleep(items) {
-      const chart = document.querySelector("#sleep-chart");
       const points = items.map((item, index) => {
         const rate = Math.max(0, Math.min(5, Number(item.rate) || 0));
         return `${index * 100},${112 - rate / 5 * 100}`;
       }).join(" ");
-      const line = `<svg class="sleep-line" viewBox="0 0 600 112" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>`;
-      chart.innerHTML = line + items.map((item) => {
+      $("#sleep-chart").innerHTML = `<svg class="sleep-line" viewBox="0 0 600 112" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>` + items.map((item) => {
         const hours = Math.max(0, Math.min(12, Number(item.hours) || 0));
         const rate = Math.max(0, Math.min(5, Number(item.rate) || 0));
         return `
           <div class="sleep-day" title="${item.sleep_date}: ${hours} ч, качество ${rate}/5">
-            <div class="sleep-bar-wrap">
-              <i class="sleep-rate-dot" style="transform: translateY(${(5 - rate) * 18}px); opacity:${rate ? 1 : .2}"></i>
-              <div class="sleep-bar" style="height:${Math.round(hours / 12 * 100)}%"></div>
+            <div class="bar-wrap">
+              <i class="dot" style="transform: translateY(${(5 - rate) * 18}px); opacity:${rate ? 1 : .25}"></i>
+              <div class="bar" style="height:${Math.round(hours / 12 * 100)}%"></div>
             </div>
             <b>${hours || "-"}</b>
             <span>${escapeHtml(item.date)}</span>
@@ -1224,261 +297,86 @@
       }).join("");
     }
 
-    function renderManage(data) {
-      if (!data.habits.length) {
-        list.innerHTML = '<div class="empty">Пока нет активных привычек. Добавь первую здесь, а отмечай в боте.</div>';
-      } else {
-        list.innerHTML = data.habits.map((habit) => {
-        const reminderText = habit.reminder?.enabled ? `Напоминание: ${escapeHtml(habit.reminder.reminder_time)}` : "Напоминание выключено";
-        return `
-          <article class="habit-card">
-            <div class="item-top">
-              <div class="item-title">
-                <h2 class="habit-name">${escapeHtml(habit.name)}</h2>
-                <p class="muted">${escapeHtml(habit.goal_text)} · серия: ${habit.streak} · всего: ${habit.total_completed} · ${reminderText}</p>
-              </div>
-              <span class="status ${habit.done_today ? "done" : "open"}">${habit.done_today ? "сегодня отмечено" : "ждёт отметки"}</span>
-            </div>
-            <div class="actions">
-              <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Переименовать</button>
-              <button class="danger" data-action="delete" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Удалить</button>
-            </div>
-            <div class="settings">
-              <div class="inline-form goal-row">
-                <input value="Цель" disabled>
-                <select data-action="goal" data-id="${habit.id}">
-                  ${goalOptions(goalValue(habit))}
-                </select>
-              </div>
-              <form class="inline-form reminder-row" data-action="reminder-form" data-id="${habit.id}">
-                <input value="⏰" disabled>
-                <input name="reminder" list="reminder-presets" placeholder="08:00 или 09:00, 21:00" value="${escapeHtml(habit.reminder?.reminder_time || "")}">
-                <button type="submit">Сохранить</button>
-              </form>
-              ${habit.reminder?.enabled ? `<button class="ghost" data-action="reminder-off" data-id="${habit.id}">Отключить напоминание</button>` : ""}
-            </div>
-          </article>
-        `;
-        }).join("");
-      }
+    async function updateAfter(action) {
+      state.data = await action();
+      render();
     }
 
-    async function refresh() {
-      try {
-        await refreshAll();
-      } catch (error) {
-        const details = initData ? "Не удалось проверить вход Telegram." : "Telegram не передал данные входа.";
-        todayList.innerHTML = `<div class="error">${details}</div>`;
-        statsView.innerHTML = `<div class="error">${details}</div>`;
-        list.innerHTML = `<div class="error">${details}</div>`;
-      }
-    }
+    $("#tab-today").addEventListener("click", () => setTab("today"));
+    $("#tab-sleep").addEventListener("click", () => setTab("sleep"));
+    $("#tab-manage").addEventListener("click", () => setTab("manage"));
 
-    todayTab.addEventListener("click", () => setTab("today"));
-    statsTab.addEventListener("click", () => setTab("stats"));
-    manageTab.addEventListener("click", () => setTab("manage"));
-
-    document.querySelector("#sleep-rate-buttons").addEventListener("click", async (event) => {
-      const button = event.target.closest("button[data-sleep-rate]");
-      if (!button) return;
-      const sleepOut = document.querySelector("#sleep-out").value;
-      const sleepUp = document.querySelector("#sleep-up").value;
-      if (!sleepOut || !sleepUp) return;
-      const sleep = await request("/api/sleep/today", {
-        sleep_out: sleepOut,
-        sleep_up: sleepUp,
-        rate: Number(button.dataset.sleepRate),
-      });
-      state.sleep = sleep;
-      renderSleep(sleep.items || []);
-    });
-
-    form.addEventListener("submit", async (event) => {
+    $("#add-form").addEventListener("submit", async (event) => {
       event.preventDefault();
+      const input = $("#habit-name");
       const name = input.value.trim();
       if (!name) return;
       input.value = "";
-      state.data = await request("/api/habits", { name });
-      state.stats = await request("/api/stats");
-      renderToday(state.data, state.stats);
-      renderManage(state.data);
-      renderStats(state.stats);
+      await updateAfter(() => request("/api/habits", { name }));
     });
 
-    list.addEventListener("submit", async (event) => {
-      const reminderForm = event.target.closest('form[data-action="reminder-form"]');
-      if (!reminderForm) return;
-      event.preventDefault();
-      const reminder = reminderForm.elements.reminder.value.trim();
-      if (!reminder) return;
-      state.data = await request(`/api/habits/${reminderForm.dataset.id}/reminder`, { reminder_time: reminder });
-      state.stats = await request("/api/stats");
-      renderToday(state.data, state.stats);
-      renderManage(state.data);
-      renderStats(state.stats);
-    });
-
-    list.addEventListener("change", async (event) => {
-      const select = event.target.closest('select[data-action="goal"]');
-      if (!select) return;
-      state.data = await request(`/api/habits/${select.dataset.id}/goal`, goalPayload(select.value));
-      state.stats = await request("/api/stats");
-      renderToday(state.data, state.stats);
-      renderManage(state.data);
-      renderStats(state.stats);
-    });
-
-    list.addEventListener("click", async (event) => {
+    $("#today-list").addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
-      const { action, id, name } = button.dataset;
+      const { action, id } = button.dataset;
+      await updateAfter(() => request(`/api/habits/${id}/${action}`));
+    });
 
+    $("#habit-list").addEventListener("change", async (event) => {
+      const select = event.target.closest('select[data-action="goal"]');
+      if (!select) return;
+      await updateAfter(() => request(`/api/habits/${select.dataset.id}/goal`, goalPayload(select.value)));
+    });
+
+    $("#habit-list").addEventListener("submit", async (event) => {
+      const form = event.target.closest(".reminder-form");
+      if (!form) return;
+      event.preventDefault();
+      const reminder = form.elements.reminder.value.trim();
+      if (!reminder) return;
+      await updateAfter(() => request(`/api/habits/${form.dataset.id}/reminder`, { reminder_time: reminder }));
+    });
+
+    $("#habit-list").addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const { action, id, name, direction } = button.dataset;
       if (action === "rename") {
-        pendingRename = { id, name: name || "" };
-        renameInput.value = pendingRename.name;
-        renameModal.classList.remove("hidden");
-        setTimeout(() => renameInput.focus(), 0);
+        state.rename = id;
+        $("#rename-input").value = name || "";
+        $("#rename-modal").classList.remove("hidden");
+        setTimeout(() => $("#rename-input").focus(), 0);
         return;
       }
-
-      if (action === "reminder-off") {
-        state.data = await request(`/api/habits/${id}/reminder/off`);
-      }
-
-      if (action === "delete") {
-        pendingDelete = { id, name: name || "" };
-        deleteCopy.textContent = pendingDelete.name
-          ? `«${pendingDelete.name}» и история отметок исчезнут.`
-          : "Привычка и история отметок исчезнут.";
-        deleteModal.classList.remove("hidden");
-        return;
-      }
-
-      state.stats = await request("/api/stats");
-      renderToday(state.data, state.stats);
-      renderManage(state.data);
-      renderStats(state.stats);
+      if (action === "delete" && !confirm("Удалить привычку?")) return;
+      if (action === "move") await updateAfter(() => request(`/api/habits/${id}/move`, { direction }));
+      if (action === "delete") await updateAfter(() => request(`/api/habits/${id}/delete`));
+      if (action === "reminder-off") await updateAfter(() => request(`/api/habits/${id}/reminder/off`));
     });
 
-    function closeRenameModal() {
-      pendingRename = null;
-      renameModal.classList.add("hidden");
-    }
-
-    renameCancel.addEventListener("click", closeRenameModal);
-    renameModal.addEventListener("click", (event) => {
-      if (event.target === renameModal) closeRenameModal();
-    });
-    renameInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") renameConfirm.click();
-      if (event.key === "Escape") closeRenameModal();
-    });
-    renameConfirm.addEventListener("click", async () => {
-      if (!pendingRename) return;
-      const nextName = renameInput.value.trim();
-      if (!nextName) return;
-      const { id } = pendingRename;
-      renameConfirm.disabled = true;
-      try {
-        state.data = await request(`/api/habits/${id}/rename`, { name: nextName });
-        state.stats = await request("/api/stats");
-        renderToday(state.data, state.stats);
-        renderManage(state.data);
-        renderStats(state.stats);
-        closeRenameModal();
-      } finally {
-        renameConfirm.disabled = false;
-      }
+    $("#sleep-rate").addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-rate]");
+      if (!button) return;
+      state.sleep = await request("/api/sleep/today", {
+        sleep_out: $("#sleep-out").value,
+        sleep_up: $("#sleep-up").value,
+        rate: Number(button.dataset.rate),
+      });
+      renderSleep(state.sleep.items || []);
     });
 
-    function closeDeleteModal() {
-      pendingDelete = null;
-      deleteModal.classList.add("hidden");
-    }
-
-    deleteCancel.addEventListener("click", closeDeleteModal);
-    deleteModal.addEventListener("click", (event) => {
-      if (event.target === deleteModal) closeDeleteModal();
-    });
-    deleteConfirm.addEventListener("click", async () => {
-      if (!pendingDelete) return;
-      const { id } = pendingDelete;
-      deleteConfirm.disabled = true;
-      try {
-        state.data = await request(`/api/habits/${id}/delete`);
-        state.stats = await request("/api/stats");
-        renderToday(state.data, state.stats);
-        renderManage(state.data);
-        renderStats(state.stats);
-        closeDeleteModal();
-      } finally {
-        deleteConfirm.disabled = false;
-      }
+    $("#rename-cancel").addEventListener("click", () => $("#rename-modal").classList.add("hidden"));
+    $("#rename-save").addEventListener("click", async () => {
+      const name = $("#rename-input").value.trim();
+      if (!state.rename || !name) return;
+      await updateAfter(() => request(`/api/habits/${state.rename}/rename`, { name }));
+      state.rename = null;
+      $("#rename-modal").classList.add("hidden");
     });
 
-    todayList.addEventListener("click", async (event) => {
-      const target = event.target.closest("[data-action]");
-      if (!target || !todayList.contains(target)) return;
-      const { action, id } = target.dataset;
-
-      if (action === "detail") {
-        openDetail(id);
-        return;
-      }
-
-      if (action === "mark") {
-        await request(`/api/habits/${id}/mark`);
-      }
-
-      if (action === "miss") {
-        await request(`/api/habits/${id}/miss`);
-      }
-
-      if (action === "undo") {
-        await request(`/api/habits/${id}/undo`);
-      }
-
-      await refreshAll();
+    refresh().catch(() => {
+      $("#summary").textContent = initData ? "Не удалось загрузить данные." : "Открой Mini App из Telegram.";
     });
-
-    document.querySelector("#habit-stats").addEventListener("click", (event) => {
-      const target = event.target.closest('[data-action="detail"]');
-      if (target) openDetail(target.dataset.id);
-    });
-
-    document.querySelector("#detail-close").addEventListener("click", () => {
-      detailModal.classList.add("hidden");
-      state.detailHabitId = null;
-    });
-
-    detailModal.addEventListener("click", (event) => {
-      if (event.target === detailModal) {
-        detailModal.classList.add("hidden");
-        state.detailHabitId = null;
-        return;
-      }
-
-      const dayButton = event.target.closest('[data-action="calendar-day"]');
-      if (!dayButton || !detailModal.contains(dayButton)) return;
-
-      const { id, date, done } = dayButton.dataset;
-      dayButton.disabled = true;
-      request(`/api/habits/${id}/${done === "1" ? "undo" : "mark"}`, { date })
-        .then(async (data) => {
-          state.data = data;
-          state.stats = await request("/api/stats");
-          renderToday(state.data, state.stats);
-          renderManage(state.data);
-          renderStats(state.stats);
-          openDetail(id);
-        })
-        .catch((error) => showToast(error.message || "Error"))
-        .finally(() => {
-          dayButton.disabled = false;
-        });
-    });
-
-    refresh();
   </script>
 </body>
 </html>
