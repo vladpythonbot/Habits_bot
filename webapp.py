@@ -18,10 +18,13 @@ from db import (
     get_habit_logs,
     get_missed_habit_ids,
     get_user_habits,
+    get_sleep_stats,
+    get_user_efficiency_report,
     mark_habit_completed,
     parse_date,
     record_habit_miss,
     save_habit,
+    save_sleep_log,
     set_habit_reminder,
     today_str,
     unmark_habit_completed,
@@ -400,6 +403,7 @@ async def api_stats(request: web.Request) -> web.Response:
         default=None,
     )
     total_completed = sum(habit[4] for habit in habits)
+    efficiency = await get_user_efficiency_report(user_id)
 
     return web.json_response({
         "today": today,
@@ -408,6 +412,10 @@ async def api_stats(request: web.Request) -> web.Response:
         "period_completed": period_completed,
         "possible": possible,
         "completion_rate": completion_rate,
+        "efficiency_7": efficiency["last_7"],
+        "efficiency_30": efficiency["last_30"],
+        "efficiency_previous_7": efficiency["previous_7"],
+        "efficiency_drop_percent": efficiency["drop_percent"],
         "missed_days": len(missed_today),
         "today_done": daily_done.get(today, 0),
         "today_possible": today_possible,
@@ -428,6 +436,35 @@ async def api_stats(request: web.Request) -> web.Response:
         "focus_habit": focus_habit,
         "habit_rows": habit_rows,
     })
+
+
+async def api_sleep_stats(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    user_id = int(user["id"])
+    requested_user_id = request.query.get("user_id")
+    if requested_user_id:
+        try:
+            requested_user_id_int = int(requested_user_id)
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text="Invalid user_id") from exc
+        if requested_user_id_int != user_id:
+            raise web.HTTPForbidden(text="Forbidden user_id")
+    return web.json_response({"items": await get_sleep_stats(user_id, days=7)})
+
+
+async def api_save_sleep_today(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    payload = await get_json_payload(request)
+    sleep_out = str(payload.get("sleep_out", "")).strip()
+    sleep_up = str(payload.get("sleep_up", "")).strip()
+    try:
+        rate = int(payload.get("rate", 0))
+    except (TypeError, ValueError):
+        rate = 0
+    saved = await save_sleep_log(int(user["id"]), today_str(), sleep_out, sleep_up, rate)
+    if not saved:
+        raise web.HTTPBadRequest(text="Invalid sleep data")
+    return await api_sleep_stats(request)
 
 
 async def api_mark(request: web.Request) -> web.Response:
@@ -474,6 +511,8 @@ def create_web_app() -> web.Application:
     app.router.add_get("/api/state", api_state)
     app.router.add_post("/api/state", api_state)
     app.router.add_post("/api/stats", api_stats)
+    app.router.add_get("/api/sleep/stats", api_sleep_stats)
+    app.router.add_post("/api/sleep/today", api_save_sleep_today)
     app.router.add_post("/api/habits", api_add_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/rename", api_rename_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/delete", api_delete_habit)

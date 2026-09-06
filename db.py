@@ -63,6 +63,72 @@ def expects_daily_check(goal_type: str | None, check_date) -> bool:
     return True
 
 
+def expected_dates_for_goal(created_date: str, goal_type: str | None, goal_value: int | None, dates: list[str]) -> set[str]:
+    created = parse_date(created_date)
+    active_dates = [date for date in dates if parse_date(date) >= created]
+    if goal_type == "weekdays":
+        return {date for date in active_dates if parse_date(date).weekday() < 5}
+    if goal_type == "weekly":
+        limit = max(1, min(7, int(goal_value or 3)))
+        by_week: dict[tuple[int, int], list[str]] = {}
+        for date in active_dates:
+            parsed = parse_date(date)
+            year, week, _ = parsed.isocalendar()
+            by_week.setdefault((year, week), []).append(date)
+        return {date for week_dates in by_week.values() for date in week_dates[:limit]}
+    return set(active_dates)
+
+
+def efficiency_status(percent: int) -> str:
+    if percent >= 85:
+        return f"{percent}% \u2014 \u041e\u0442\u043b\u0438\u0447\u043d\u043e. \u0421\u0438\u0441\u0442\u0435\u043c\u0430 \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442 \u0441\u0442\u0430\u0431\u0438\u043b\u044c\u043d\u043e, \u0432\u0441\u0451 \u0432 \u0444\u043e\u043a\u0443\u0441\u0435."
+    if percent >= 70:
+        return f"{percent}% \u2014 \u041d\u043e\u0440\u043c\u0430\u043b\u044c\u043d\u043e. \u0420\u0430\u0431\u043e\u0447\u0438\u0439 \u0440\u0435\u0436\u0438\u043c, \u0431\u0430\u0437\u0430 \u0434\u0435\u0440\u0436\u0438\u0442\u0441\u044f."
+    if percent >= 50:
+        return f"{percent}% \u2014 \u041f\u043e\u0448\u043b\u0438 \u0441\u0431\u043e\u0438. \u0421\u0442\u043e\u0438\u0442 \u043e\u0431\u0440\u0430\u0442\u0438\u0442\u044c \u0432\u043d\u0438\u043c\u0430\u043d\u0438\u0435 \u043d\u0430 \u0441\u043e\u043d \u0438 \u043f\u0438\u0442\u0430\u043d\u0438\u0435."
+    return f"{percent}% \u2014 \u0421\u043f\u0430\u0434. \u041f\u043e\u0440\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0433\u0440\u0430\u0444\u0438\u043a \u0438 \u0441\u0434\u0435\u043b\u0430\u0442\u044c \u043e\u0434\u043d\u043e \u043f\u0440\u043e\u0441\u0442\u043e\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435."
+
+
+def sleep_hours(sleep_out: str | None, sleep_up: str | None) -> float:
+    if not sleep_out or not sleep_up:
+        return 0.0
+    try:
+        start = datetime.strptime(sleep_out, "%H:%M")
+        end = datetime.strptime(sleep_up, "%H:%M")
+    except ValueError:
+        return 0.0
+    if end <= start:
+        end += timedelta(days=1)
+    return round((end - start).total_seconds() / 3600, 1)
+
+
+def habit_efficiency(habit, dates: list[str], completed_dates: set[str], missed_dates: set[str]) -> dict:
+    target_dates = expected_dates_for_goal(habit[2], habit[8], habit[9], dates) - missed_dates
+    fact_days = len(target_dates & completed_dates)
+    target_days = len(target_dates)
+    efficiency = min(100, round(fact_days / target_days * 100)) if target_days else 0
+    return {
+        "habit_id": habit[0],
+        "habit_name": habit[1],
+        "target_days": target_days,
+        "fact_days": fact_days,
+        "efficiency": efficiency,
+    }
+
+
+def total_efficiency(habits, dates: list[str], completed_by_habit: dict[int, set[str]], missed_by_habit: dict[int, set[str]]) -> dict:
+    items = [
+        habit_efficiency(
+            habit,
+            dates,
+            completed_by_habit.get(habit[0], set()),
+            missed_by_habit.get(habit[0], set()),
+        )
+        for habit in habits
+    ]
+    percent = round(sum(item["efficiency"] for item in items) / len(items)) if items else 0
+    return {"percent": percent, "status": efficiency_status(percent), "items": items}
+
 async def init_db():
     Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
 
@@ -140,6 +206,30 @@ async def init_db():
             )
         """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS efficiency_alerts (
+                user_id INTEGER NOT NULL,
+                alert_date TEXT NOT NULL,
+                current_rate INTEGER NOT NULL,
+                previous_rate INTEGER NOT NULL,
+                drop_percent INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, alert_date)
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sleep_logs (
+                user_id INTEGER NOT NULL,
+                sleep_date TEXT NOT NULL,
+                sleep_out TEXT NOT NULL,
+                sleep_up TEXT NOT NULL,
+                rate INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, sleep_date)
+            )
+        """)
         await db.execute("""
             INSERT OR IGNORE INTO habit_logs (user_id, habit_id, completed_date, created_at)
             SELECT user_id, id, last_completed_date, datetime('now')
@@ -623,6 +713,134 @@ async def get_habit_logs(user_id: int, habit_id: int | None = None, days: int = 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(query, params)
         return await cursor.fetchall()
+
+
+
+
+async def get_habit_misses(user_id: int, habit_id: int | None = None, days: int = 30):
+    dates = date_range(days)
+    params = [user_id, dates[0]]
+    query = """
+        SELECT habit_id, missed_date
+        FROM habit_misses
+        WHERE user_id = ? AND missed_date >= ?
+    """
+
+    if habit_id is not None:
+        query += " AND habit_id = ?"
+        params.append(habit_id)
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute(query, params)
+        return await cursor.fetchall()
+
+
+async def get_user_efficiency_report(user_id: int) -> dict:
+    habits = await get_user_habits(user_id)
+    closed_dates = [date for date in date_range(31) if date != today_str()]
+    last_30_dates = closed_dates[-30:]
+    last_7_dates = closed_dates[-7:]
+    previous_7_dates = closed_dates[-14:-7]
+    logs = await get_habit_logs(user_id, days=31)
+    misses = await get_habit_misses(user_id, days=31)
+    completed_by_habit: dict[int, set[str]] = {}
+    missed_by_habit: dict[int, set[str]] = {}
+
+    for habit_id, completed_date in logs:
+        completed_by_habit.setdefault(habit_id, set()).add(completed_date)
+    for habit_id, missed_date in misses:
+        missed_by_habit.setdefault(habit_id, set()).add(missed_date)
+
+    last_7 = total_efficiency(habits, last_7_dates, completed_by_habit, missed_by_habit)
+    previous_7 = total_efficiency(habits, previous_7_dates, completed_by_habit, missed_by_habit)
+    last_30 = total_efficiency(habits, last_30_dates, completed_by_habit, missed_by_habit)
+    drop = max(0, previous_7["percent"] - last_7["percent"])
+
+    return {
+        "habits_count": len(habits),
+        "last_7": last_7,
+        "previous_7": previous_7,
+        "last_30": last_30,
+        "drop_percent": drop,
+        "drop_alert": drop > 15,
+    }
+
+
+async def has_efficiency_alert(user_id: int, alert_date: str | None = None) -> bool:
+    alert_date = alert_date or today_str()
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT 1
+            FROM efficiency_alerts
+            WHERE user_id = ? AND alert_date = ?
+        """, (user_id, alert_date))
+        return await cursor.fetchone() is not None
+
+
+async def record_efficiency_alert(user_id: int, current_rate: int, previous_rate: int, drop_percent: int, alert_date: str | None = None) -> bool:
+    alert_date = alert_date or today_str()
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            INSERT OR IGNORE INTO efficiency_alerts
+            (user_id, alert_date, current_rate, previous_rate, drop_percent, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, alert_date, current_rate, previous_rate, drop_percent, datetime.now().isoformat(timespec="seconds")))
+        await db.commit()
+        return cursor.rowcount > 0
+
+async def save_sleep_log(user_id: int, sleep_date: str, sleep_out: str, sleep_up: str, rate: int) -> bool:
+    if not 1 <= rate <= 5:
+        return False
+    if sleep_hours(sleep_out, sleep_up) <= 0:
+        return False
+
+    now = datetime.now().isoformat(timespec="seconds")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO sleep_logs (user_id, sleep_date, sleep_out, sleep_up, rate, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, sleep_date) DO UPDATE SET
+                sleep_out = excluded.sleep_out,
+                sleep_up = excluded.sleep_up,
+                rate = excluded.rate,
+                updated_at = excluded.updated_at
+        """, (user_id, sleep_date, sleep_out, sleep_up, rate, now, now))
+        await db.commit()
+        return True
+
+
+async def get_sleep_stats(user_id: int, days: int = 7) -> list[dict]:
+    dates = date_range(days)
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT sleep_date, sleep_out, sleep_up, rate
+            FROM sleep_logs
+            WHERE user_id = ? AND sleep_date >= ?
+        """, (user_id, dates[0]))
+        rows = {row[0]: row for row in await cursor.fetchall()}
+
+    weekdays = ["\u041f\u043d", "\u0412\u0442", "\u0421\u0440", "\u0427\u0442", "\u041f\u0442", "\u0421\u0431", "\u0412\u0441"]
+    result = []
+    for date in dates:
+        row = rows.get(date)
+        parsed = parse_date(date)
+        label = weekdays[parsed.weekday()]
+        if row:
+            _, sleep_out, sleep_up, rate = row
+            hours = sleep_hours(sleep_out, sleep_up)
+        else:
+            sleep_out = sleep_up = None
+            rate = 0
+            hours = 0.0
+        result.append({
+            "date": label,
+            "sleep_date": date,
+            "hours": hours,
+            "rate": rate,
+            "sleep_out": sleep_out,
+            "sleep_up": sleep_up,
+        })
+    return result
 
 
 async def get_all_users_with_habits():

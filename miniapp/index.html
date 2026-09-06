@@ -365,6 +365,93 @@
       overflow: hidden;
     }
 
+    .sleep-card {
+      background: #111827;
+      color: #f8fafc;
+      border-color: #263449;
+    }
+
+    .sleep-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .sleep-rate-buttons {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+      grid-column: 1 / -1;
+    }
+
+    .sleep-rate-buttons button {
+      background: #243b62;
+      color: #eaf2ff;
+      min-height: 36px;
+      padding: 0;
+    }
+
+    .sleep-chart {
+      min-height: 180px;
+      display: grid;
+      align-items: end;
+      gap: 8px;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      border-top: 1px solid rgba(255,255,255,.12);
+      padding-top: 14px;
+      position: relative;
+    }
+
+    .sleep-line {
+      position: absolute;
+      inset: 20px 0 42px;
+      width: 100%;
+      height: 112px;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .sleep-line polyline {
+      fill: none;
+      stroke: #facc15;
+      stroke-width: 4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .sleep-day {
+      min-width: 0;
+      display: grid;
+      gap: 6px;
+      align-items: end;
+      color: #cbd5e1;
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .sleep-bar-wrap {
+      height: 112px;
+      display: grid;
+      align-items: end;
+      position: relative;
+    }
+
+    .sleep-bar {
+      min-height: 2px;
+      border-radius: 6px 6px 2px 2px;
+      background: linear-gradient(180deg, #8b5cf6, #2563eb);
+    }
+
+    .sleep-rate-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #facc15;
+      border: 2px solid #22c55e;
+      justify-self: center;
+    }
+
     .rate-fill {
       height: 100%;
       width: var(--width);
@@ -707,6 +794,25 @@
         </div>
       </div>
 
+      <div class="panel sleep-card">
+        <div class="section-head">
+          <h2>Сон</h2>
+          <span class="muted">7 дней</span>
+        </div>
+        <form class="sleep-form" id="sleep-form">
+          <input id="sleep-out" type="time" value="23:30" aria-label="Лёг спать">
+          <input id="sleep-up" type="time" value="07:30" aria-label="Проснулся">
+          <div class="sleep-rate-buttons" id="sleep-rate-buttons">
+            <button type="button" data-sleep-rate="1">1</button>
+            <button type="button" data-sleep-rate="2">2</button>
+            <button type="button" data-sleep-rate="3">3</button>
+            <button type="button" data-sleep-rate="4">4</button>
+            <button type="button" data-sleep-rate="5">5</button>
+          </div>
+        </form>
+        <div class="sleep-chart" id="sleep-chart"></div>
+      </div>
+
       <div class="panel">
         <div class="section-head">
           <h2>Неделя</h2>
@@ -864,6 +970,14 @@
       return response.json();
     }
 
+    async function requestGet(path) {
+      const response = await fetch(path, {
+        headers: { "X-Telegram-Init-Data": initData },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    }
+
     function escapeHtml(value) {
       return String(value)
         .replaceAll("&", "&amp;")
@@ -942,14 +1056,17 @@
     }
 
     async function refreshAll() {
-      const [data, stats] = await Promise.all([
+      const [data, stats, sleep] = await Promise.all([
         request("/api/state"),
         request("/api/stats"),
+        requestGet("/api/sleep/stats"),
       ]);
       state.data = data;
       state.stats = stats;
+      state.sleep = sleep;
       renderToday(data, stats);
       renderStats(stats);
+      renderSleep(sleep.items || []);
       renderManage(data);
     }
 
@@ -1008,8 +1125,8 @@
     }
 
     function renderStats(stats) {
-      const rate = Math.max(0, Math.min(100, stats.today_rate || 0));
-      const monthRate = Math.max(0, Math.min(100, stats.completion_rate || 0));
+      const rate = Math.max(0, Math.min(100, stats.efficiency_7?.percent || 0));
+      const monthRate = Math.max(0, Math.min(100, stats.efficiency_30?.percent || 0));
       const trend = stats.trend || 0;
       const dailyValues = Object.values(stats.daily_done);
       const max = Math.max(1, ...dailyValues);
@@ -1022,16 +1139,16 @@
       document.querySelector("#rate").textContent = `${rate}%`;
       document.querySelector("#ring").style.setProperty("--value", `${Math.round(rate * 3.6)}deg`);
       document.querySelector("#today-score").textContent = `${stats.today_done}/${stats.today_possible || stats.habits_count} сегодня`;
-      document.querySelector("#week-score").textContent = `${stats.week_rate || 0}% за 7 дней`;
+      document.querySelector("#week-score").textContent = `${stats.efficiency_7?.percent || 0}% за 7 дней`;
       document.querySelector("#streak-score").textContent = stats.best_streak || 0;
       document.querySelector("#month-score").textContent = `${monthRate}%`;
       document.querySelector("#perfect-score").textContent = stats.perfect_days || 0;
-      document.querySelector("#trend-score").textContent = trendLabel(trend);
+      document.querySelector("#trend-score").textContent = `${stats.efficiency_drop_percent || 0}%`;
       document.querySelector("#best-day").textContent = best.value ? `Лучший день: ${best.date} · ${best.value}` : "Лучший день: -";
 
-      const title = rate >= 100 ? "Сегодня закрыто" : rate >= 50 ? "День в процессе" : "Сегодня нужен старт";
+      const title = stats.efficiency_7?.status || "Пока собираем статистику";
       const copy = stats.habits_count
-        ? `Отмечено ${stats.today_done} из ${stats.today_possible || stats.habits_count}. За 30 дней общий ритм ${monthRate}%.`
+        ? `30 дней: ${stats.efficiency_30?.status || `${monthRate}%`}`
         : "Добавь привычку во вкладке управления, а отметки делай в боте.";
       document.querySelector("#summary-title").textContent = title;
       document.querySelector("#summary-copy").textContent = copy;
@@ -1049,7 +1166,7 @@
       document.querySelector("#active-days").textContent = `${stats.active_days || 0} из 29 дней`;
       document.querySelector("#average-streak").textContent = stats.average_streak || 0;
       const trendBadge = document.querySelector("#trend-badge");
-      trendBadge.textContent = `${trendLabel(trend)} к прошлой неделе`;
+      trendBadge.textContent = `${stats.efficiency_drop_percent || 0}% падение`;
       trendBadge.className = trendClass(trend);
 
       document.querySelector("#week-strip").innerHTML = stats.dates.slice(-8, -1).map((date) => {
@@ -1082,6 +1199,29 @@
           </div>
         </article>
       `).join("") : '<div class="empty">Нет привычек для анализа.</div>';
+    }
+
+    function renderSleep(items) {
+      const chart = document.querySelector("#sleep-chart");
+      const points = items.map((item, index) => {
+        const rate = Math.max(0, Math.min(5, Number(item.rate) || 0));
+        return `${index * 100},${112 - rate / 5 * 100}`;
+      }).join(" ");
+      const line = `<svg class="sleep-line" viewBox="0 0 600 112" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>`;
+      chart.innerHTML = line + items.map((item) => {
+        const hours = Math.max(0, Math.min(12, Number(item.hours) || 0));
+        const rate = Math.max(0, Math.min(5, Number(item.rate) || 0));
+        return `
+          <div class="sleep-day" title="${item.sleep_date}: ${hours} ч, качество ${rate}/5">
+            <div class="sleep-bar-wrap">
+              <i class="sleep-rate-dot" style="transform: translateY(${(5 - rate) * 18}px); opacity:${rate ? 1 : .2}"></i>
+              <div class="sleep-bar" style="height:${Math.round(hours / 12 * 100)}%"></div>
+            </div>
+            <b>${hours || "-"}</b>
+            <span>${escapeHtml(item.date)}</span>
+          </div>
+        `;
+      }).join("");
     }
 
     function renderManage(data) {
@@ -1137,6 +1277,21 @@
     todayTab.addEventListener("click", () => setTab("today"));
     statsTab.addEventListener("click", () => setTab("stats"));
     manageTab.addEventListener("click", () => setTab("manage"));
+
+    document.querySelector("#sleep-rate-buttons").addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-sleep-rate]");
+      if (!button) return;
+      const sleepOut = document.querySelector("#sleep-out").value;
+      const sleepUp = document.querySelector("#sleep-up").value;
+      if (!sleepOut || !sleepUp) return;
+      const sleep = await request("/api/sleep/today", {
+        sleep_out: sleepOut,
+        sleep_up: sleepUp,
+        rate: Number(button.dataset.sleepRate),
+      });
+      state.sleep = sleep;
+      renderSleep(sleep.items || []);
+    });
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
