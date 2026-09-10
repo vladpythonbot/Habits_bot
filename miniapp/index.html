@@ -149,34 +149,6 @@
     .habit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .settings { display: grid; gap: 8px; grid-template-columns: 1fr; }
     .add-form, .reminder-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-    .time-picker {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 10px;
-      align-items: center;
-      margin-top: 2px;
-    }
-    .time-value { min-width: 50px; font-weight: 800; color: var(--accent); }
-    .time-rail {
-      height: 42px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: linear-gradient(90deg, #182334, #24334a);
-      position: relative;
-      touch-action: none;
-      cursor: pointer;
-    }
-    .time-thumb {
-      position: absolute;
-      top: 50%;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 0 6px rgba(56, 201, 133, .16);
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-    }
     .quick-add {
       width: 100%;
       margin: 0 0 30px;
@@ -300,7 +272,7 @@
     tg?.expand();
 
     const initData = tg?.initData || "";
-    const state = { data: null, sleep: null, tab: "today", rename: null, draggingId: null, timeDrag: null, refreshing: false };
+    const state = { data: null, sleep: null, tab: "today", rename: null, draggingId: null, refreshing: false };
     const $ = (selector) => document.querySelector(selector);
     const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
@@ -432,31 +404,8 @@
       return { goal_type: value };
     }
 
-    function timeToMinutes(time = "09:00") {
-      const [hours, minutes] = time.split(":").map(Number);
-      return Math.min(1435, Math.max(0, (hours || 0) * 60 + (minutes || 0)));
-    }
-
-    function minutesToTime(minutes) {
-      const snapped = Math.round(minutes / 5) * 5;
-      return `${String(Math.floor(snapped / 60)).padStart(2, "0")}:${String(snapped % 60).padStart(2, "0")}`;
-    }
-
     function primaryTime(habit) {
       return habit.primary_time || habit.reminder?.reminder_time || "09:00";
-    }
-
-    function timeRail(habit) {
-      const time = primaryTime(habit);
-      const left = timeToMinutes(time) / 1435 * 100;
-      return `
-        <div class="time-picker">
-          <span class="time-value" data-time-label="${habit.id}">${time}</span>
-          <div class="time-rail" data-action="time" data-id="${habit.id}" data-time="${time}" role="slider" aria-label="Время главной привычки">
-            <i class="time-thumb" style="left:${left}%"></i>
-          </div>
-        </div>
-      `;
     }
 
     function renderManage(data) {
@@ -470,7 +419,6 @@
               <p class="muted">${escapeHtml(habit.goal_text)} · всего отметок ${habit.total_completed}</p>
             </div>
           </div>
-          ${habit.is_primary ? timeRail(habit) : ""}
           <div class="habit-actions">
             <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}" type="button">Название</button>
             <button class="danger" data-action="delete" data-id="${habit.id}" type="button">Удалить</button>
@@ -478,7 +426,7 @@
           <div class="settings">
             <select data-action="goal" data-id="${habit.id}">${goalOptions(goalValue(habit))}</select>
             <form class="reminder-form" data-id="${habit.id}">
-              <input name="reminder" type="time" value="${escapeHtml(habit.reminder?.reminder_time || "")}" aria-label="Напоминание">
+              <input name="reminder" type="time" value="${escapeHtml(habit.is_primary ? primaryTime(habit) : habit.reminder?.reminder_time || "")}" aria-label="Напоминание">
               <button type="submit">OK</button>
             </form>
             ${habit.reminder?.enabled ? `<button class="ghost" data-action="reminder-off" data-id="${habit.id}" type="button">Отключить напоминание</button>` : ""}
@@ -601,42 +549,6 @@
       }
     }
 
-    function updateTimeRail(rail, clientX) {
-      const box = rail.getBoundingClientRect();
-      const ratio = Math.min(1, Math.max(0, (clientX - box.left) / box.width));
-      const time = minutesToTime(ratio * 1435);
-      rail.dataset.time = time;
-      rail.querySelector(".time-thumb").style.left = `${ratio * 100}%`;
-      document.querySelector(`[data-time-label="${rail.dataset.id}"]`).textContent = time;
-      return time;
-    }
-
-    function startTimeDrag(event) {
-      const rail = event.target.closest('[data-action="time"]');
-      if (!rail) return;
-      state.timeDrag = rail;
-      rail.setPointerCapture?.(event.pointerId);
-      updateTimeRail(rail, event.clientX);
-      event.preventDefault();
-    }
-
-    function moveTimeDrag(event) {
-      if (state.timeDrag) updateTimeRail(state.timeDrag, event.clientX);
-    }
-
-    async function endTimeDrag() {
-      if (!state.timeDrag) return;
-      const rail = state.timeDrag;
-      state.timeDrag = null;
-      try {
-        await updateAfter(() => request(`/api/habits/${rail.dataset.id}/primary-time`, { primary_time: rail.dataset.time }));
-        showToast(`Время: ${rail.dataset.time}`);
-      } catch (error) {
-        showToast(error.message || "Не удалось сохранить время");
-        refresh();
-      }
-    }
-
     async function runTodayAction(button) {
       const { action, id } = button.dataset;
       button.disabled = true;
@@ -685,11 +597,6 @@
     $("#habit-list").addEventListener("pointermove", moveDrag);
     $("#habit-list").addEventListener("pointerup", endDrag);
     $("#habit-list").addEventListener("pointercancel", endDrag);
-    $("#habit-list").addEventListener("pointerdown", startTimeDrag);
-    $("#habit-list").addEventListener("pointermove", moveTimeDrag);
-    $("#habit-list").addEventListener("pointerup", endTimeDrag);
-    $("#habit-list").addEventListener("pointercancel", endTimeDrag);
-
     $("#habit-list").addEventListener("change", async (event) => {
       const select = event.target.closest('select[data-action="goal"]');
       if (!select) return;
