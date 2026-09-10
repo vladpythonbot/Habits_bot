@@ -19,6 +19,7 @@ from db import (
     get_habit_logs,
     get_missed_habit_ids,
     get_user_habits,
+    get_user_habit_stats,
     get_sleep_stats,
     mark_habit_completed,
     parse_date,
@@ -172,12 +173,14 @@ async def api_state(request: web.Request) -> web.Response:
     habits = await get_user_habits(user_id)
     missed_ids = await get_missed_habit_ids(user_id)
     items = [await habit_payload(user_id, habit, missed_ids) for habit in habits]
+    habit_stats = await get_user_habit_stats(user_id)
     done_count = sum(1 for item in items if item["done_today"])
 
     return json_response({
         "user": {"id": user_id, "first_name": user.get("first_name", "")},
         "today": today_str(),
         "note": await get_daily_note(user_id, today_str()),
+        "habit_stats": habit_stats,
         "summary": {
             "total": len(items),
             "done": done_count,
@@ -325,6 +328,7 @@ async def api_stats(request: web.Request) -> web.Response:
         "today_open": today_open,
         "active_days": sum(1 for value in daily_done.values() if value > 0),
         "daily_done": daily_done,
+        "habits": await get_user_habit_stats(user_id),
     })
 
 

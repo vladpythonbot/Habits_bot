@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
+from math import ceil
 
 import aiosqlite
 
@@ -739,6 +740,60 @@ async def get_habit_misses(user_id: int, habit_id: int | None = None, days: int 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute(query, params)
         return await cursor.fetchall()
+
+
+def planned_checks_count(goal_type: str | None, goal_value: int | None, dates: list[str]) -> int:
+    if goal_type == "weekly":
+        return min(len(dates), ceil(len(dates) / 7 * (goal_value or 3)))
+    return sum(1 for value in dates if expects_daily_check(goal_type, parse_date(value)))
+
+
+def habit_adoption_label(percent: int) -> str:
+    if percent >= 85:
+        return "прижилась"
+    if percent >= 60:
+        return "держится"
+    if percent >= 30:
+        return "шатко"
+    return "буксует"
+
+
+async def get_user_habit_stats(user_id: int, days: int = 30) -> list[dict]:
+    habits = await get_user_habits(user_id)
+    period = date_range(days)
+    logs = await get_habit_logs(user_id, days=days)
+    misses = await get_habit_misses(user_id, days=days)
+    done_by_habit: dict[int, set[str]] = {}
+    missed_by_habit: dict[int, set[str]] = {}
+
+    for habit_id, completed_date in logs:
+        done_by_habit.setdefault(habit_id, set()).add(completed_date)
+    for habit_id, missed_date in misses:
+        missed_by_habit.setdefault(habit_id, set()).add(missed_date)
+
+    result = []
+    for habit in habits:
+        habit_id, name, created_date, streak, total_completed, *_rest = habit
+        goal_type = habit[8] if len(habit) > 8 else "daily"
+        goal_value = int(habit[9] if len(habit) > 9 else 7)
+        active_dates = [value for value in period if value >= created_date]
+        target_days = planned_checks_count(goal_type, goal_value, active_dates)
+        fact_days = len(done_by_habit.get(habit_id, set()) & set(active_dates))
+        missed_days = len(missed_by_habit.get(habit_id, set()) & set(active_dates))
+        percent = min(100, round(fact_days / target_days * 100)) if target_days else 0
+
+        result.append({
+            "id": habit_id,
+            "name": name,
+            "streak": streak,
+            "total_completed": total_completed,
+            "target_days": target_days,
+            "fact_days": fact_days,
+            "missed_days": missed_days,
+            "percent": percent,
+            "label": habit_adoption_label(percent),
+        })
+    return result
 
 
 async def save_sleep_log(user_id: int, sleep_date: str, sleep_out: str, sleep_up: str, rate: int) -> bool:

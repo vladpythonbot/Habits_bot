@@ -110,6 +110,13 @@
     }
     .note-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
     .note-status { color: #b58a26; font-size: 12px; font-weight: 700; }
+    .stats-list { display: grid; gap: 10px; }
+    .stat-card { display: grid; gap: 8px; }
+    .stat-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+    .stat-percent { color: var(--accent); font-size: 20px; font-weight: 900; }
+    .stat-bar { height: 8px; overflow: hidden; border-radius: 999px; background: #e9eef7; }
+    .stat-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .stat-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; color: var(--muted); font-size: 12px; }
     .primary-card {
       min-height: 140px;
       overflow: hidden;
@@ -241,6 +248,13 @@
         </div>
         <textarea id="daily-note" maxlength="1200" placeholder="Пара строк для себя: что держать в фокусе, что отпустить, что заметил."></textarea>
       </section>
+      <section class="panel">
+        <div class="note-head">
+          <h2>Как прижились</h2>
+          <span class="muted">30 дней</span>
+        </div>
+        <div class="stats-list" id="habit-stats"></div>
+      </section>
     </section>
 
     <section id="view-sleep" class="hidden">
@@ -355,6 +369,7 @@
       $("#hello").textContent = data.user?.first_name || "";
       renderToday(data);
       renderNote(data.note || "");
+      renderHabitStats(data.habit_stats || []);
       renderManage(data);
       renderSleep(state.sleep?.items || []);
     }
@@ -363,6 +378,23 @@
       const input = $("#daily-note");
       if (document.activeElement !== input && input.value !== note) input.value = note;
       $("#note-status").textContent = "сохранено";
+    }
+
+    function renderHabitStats(items) {
+      $("#habit-stats").innerHTML = items.length ? items.map((item) => `
+        <article class="stat-card">
+          <div class="stat-top">
+            <h2>${escapeHtml(item.name)}</h2>
+            <b class="stat-percent">${item.percent}%</b>
+          </div>
+          <div class="stat-bar"><span class="stat-fill" style="width:${Math.max(0, Math.min(100, item.percent))}%"></span></div>
+          <div class="stat-meta">
+            <span>срывов ${item.missed_days}</span>
+            <span>серия ${item.streak}</span>
+            <span>${escapeHtml(item.label)}</span>
+          </div>
+        </article>
+      `).join("") : '<div class="empty">Статистика появится после первых отметок.</div>';
     }
 
     function habitStatus(habit) {

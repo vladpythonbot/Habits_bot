@@ -13,6 +13,7 @@ from bot import bot
 from db import (
     get_due_habit_reminders,
     get_missed_habit_ids,
+    get_user_habit_stats,
     get_user_habits,
     is_habit_missed,
     mark_habit_completed,
@@ -150,7 +151,17 @@ async def statistics(message: types.Message, state: FSMContext):
     )
     if primary:
         text += f"\nГлавная строка: {habit_name(primary)} · {escape(primary_time(primary))}"
-    await message.answer(text, reply_markup=main_keyboard)
+
+    stats = await get_user_habit_stats(message.from_user.id)
+    if stats:
+        text += "\n\n<b>Как прижились за 30 дней:</b>"
+        for item in stats:
+            text += (
+                f"\n• <b>{escape(item['name'])}</b>: {item['percent']}%"
+                f" · срывов {item['missed_days']}"
+                f" · серия {item['streak']}"
+            )
+    await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
 
 
 @router.message(Command("today"))
