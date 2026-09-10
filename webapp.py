@@ -25,6 +25,8 @@ from db import (
     reorder_habits,
     save_habit,
     save_sleep_log,
+    set_primary_habit,
+    set_primary_habit_time,
     set_habit_reminder,
     today_str,
     unmark_habit_completed,
@@ -87,6 +89,8 @@ async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
     habit_id, name, created_date, streak, total_completed, last_completed, goal_days, _, *extra = habit
     goal_type = extra[0] if len(extra) > 0 else "daily"
     goal_value = int(extra[1] if len(extra) > 1 else 7)
+    is_primary = bool(extra[2]) if len(extra) > 2 else False
+    primary_time = extra[3] if len(extra) > 3 else None
     today = today_str()
     reminder = await get_habit_reminder(user_id, habit_id)
     return {
@@ -101,6 +105,8 @@ async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
         "goal_text": goal_label(goal_type, goal_value),
         "done_today": last_completed == today,
         "missed_today": habit_id in missed_ids,
+        "is_primary": is_primary,
+        "primary_time": primary_time,
         "reminder": reminder,
     }
 
@@ -228,6 +234,25 @@ async def api_reorder_habits(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
+def validate_hhmm(value: str) -> str:
+    try:
+        hours, minutes = [int(part) for part in value.split(":", 1)]
+    except (AttributeError, ValueError) as exc:
+        raise web.HTTPBadRequest(text="Invalid time") from exc
+    if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+        raise web.HTTPBadRequest(text="Invalid time")
+    return f"{hours:02d}:{minutes:02d}"
+
+
+async def api_set_primary_habit(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    habit_id = int(request.match_info["habit_id"])
+    updated = await set_primary_habit(int(user["id"]), habit_id)
+    if not updated:
+        raise web.HTTPNotFound(text="Habit not found")
+    return await api_state(request)
+
+
 async def api_set_goal(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     payload = await get_json_payload(request)
@@ -248,10 +273,19 @@ async def api_set_reminder(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     payload = await get_json_payload(request)
     habit_id = int(request.match_info["habit_id"])
-    reminder_time = str(payload.get("reminder_time", "")).strip()
-    if not reminder_time:
-        raise web.HTTPBadRequest(text="Reminder time is required")
+    reminder_time = validate_hhmm(str(payload.get("reminder_time", "")).strip())
     saved = await set_habit_reminder(int(user["id"]), habit_id, reminder_time, enabled=True)
+    if not saved:
+        raise web.HTTPNotFound(text="Habit not found")
+    return await api_state(request)
+
+
+async def api_set_primary_time(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    payload = await get_json_payload(request)
+    habit_id = int(request.match_info["habit_id"])
+    primary_time = validate_hhmm(str(payload.get("primary_time", "")).strip())
+    saved = await set_primary_habit_time(int(user["id"]), habit_id, primary_time)
     if not saved:
         raise web.HTTPNotFound(text="Habit not found")
     return await api_state(request)
@@ -370,6 +404,8 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits/{habit_id:\\d+}/rename", api_rename_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/delete", api_delete_habit)
     app.router.add_post("/api/habits/reorder", api_reorder_habits)
+    app.router.add_post("/api/habits/{habit_id:\\d+}/primary", api_set_primary_habit)
+    app.router.add_post("/api/habits/{habit_id:\\d+}/primary-time", api_set_primary_time)
     app.router.add_post("/api/habits/{habit_id:\\d+}/goal", api_set_goal)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder", api_set_reminder)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder/off", api_disable_reminder)

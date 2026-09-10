@@ -24,14 +24,13 @@ from db import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "2026.07.01.1"
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 MINI_APP_URL = os.getenv("MINI_APP_URL") or (
     f"https://{RAILWAY_PUBLIC_DOMAIN}/miniapp" if RAILWAY_PUBLIC_DOMAIN else None
 )
 
 main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="🟢 Сегодня")]],
+    keyboard=[[KeyboardButton(text="Сегодня")]],
     resize_keyboard=True,
     one_time_keyboard=False,
     is_persistent=True,
@@ -41,19 +40,28 @@ main_keyboard = ReplyKeyboardMarkup(
 def mini_app_keyboard() -> InlineKeyboardMarkup | None:
     if not MINI_APP_URL:
         return None
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Открыть Mini App", web_app=WebAppInfo(url=MINI_APP_URL)),
-    ]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text="Открыть Mini App",
+        web_app=WebAppInfo(url=MINI_APP_URL),
+    )]])
 
 
 def habit_name(habit) -> str:
     return escape(habit[1])
 
 
+def is_primary_habit(habit) -> bool:
+    return bool(habit[10]) if len(habit) > 10 else False
+
+
+def primary_time(habit) -> str:
+    return habit[11] if len(habit) > 11 and habit[11] else "09:00"
+
+
 def today_keyboard(habits, missed_ids: set[int]) -> InlineKeyboardMarkup | None:
     rows = []
     today = today_str()
-    for habit in habits:
+    for habit in sorted(habits, key=lambda item: not is_primary_habit(item)):
         habit_id = habit[0]
         if habit[5] == today:
             rows.append([InlineKeyboardButton(text=f"↩️ {habit[1][:22]}", callback_data=f"undo_{habit_id}")])
@@ -84,10 +92,15 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
 
     today = today_str()
     missed_ids = set(await get_missed_habit_ids(user_id))
-    pending = [habit for habit in habits if habit[5] != today and habit[0] not in missed_ids]
-    completed = [habit for habit in habits if habit[5] == today]
+    ordered = sorted(habits, key=lambda item: not is_primary_habit(item))
+    primary = next((habit for habit in ordered if is_primary_habit(habit)), None)
+    pending = [habit for habit in ordered if habit[5] != today and habit[0] not in missed_ids]
+    completed = [habit for habit in ordered if habit[5] == today]
 
     text = "🟣 <b>HabitFlow</b>"
+    if primary:
+        text += f"\n\n⭐ <b>Главная:</b> {habit_name(primary)} · {escape(primary_time(primary))}"
+
     if pending:
         text += "\n\n<b>Сегодня не отмечено:</b>"
         text += "".join(f"\n• <b>{habit_name(habit)}</b>" for habit in pending)
@@ -104,7 +117,10 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
 @router.message(Command("start"))
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer("Меню под рукой. Управление привычками — в Mini App.", reply_markup=main_keyboard)
+    await message.answer(
+        "Меню под рукой. Управление привычками — в Mini App.",
+        reply_markup=main_keyboard,
+    )
     await show_today(message, message.from_user.id)
 
 
@@ -124,16 +140,20 @@ async def statistics(message: types.Message, state: FSMContext):
     missed_ids = set(await get_missed_habit_ids(message.from_user.id))
     done = sum(1 for habit in habits if habit[5] == today_str())
     open_count = sum(1 for habit in habits if habit[5] != today_str() and habit[0] not in missed_ids)
+    primary = next((habit for habit in habits if is_primary_habit(habit)), None)
+
     text = (
         f"Привычек: {len(habits)}\n"
         f"Сегодня отмечено: {done}\n"
         f"Ждёт отметки: {open_count}"
     )
+    if primary:
+        text += f"\nГлавная: {habit_name(primary)} · {escape(primary_time(primary))}"
     await message.answer(text, reply_markup=main_keyboard)
 
 
 @router.message(Command("today"))
-@router.message(F.text.in_(["🟢 Сегодня", "Сегодня"]))
+@router.message(F.text.in_(["Сегодня", "🟢 Сегодня"]))
 async def today(message: types.Message, state: FSMContext):
     await state.clear()
     await show_today(message, message.from_user.id)
