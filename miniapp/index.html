@@ -7,45 +7,45 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
-      color-scheme: light dark;
-      --bg: #0f141d;
-      --panel: #171f2b;
-      --soft: #202a38;
-      --text: #f6f7fb;
-      --muted: #a7b0bf;
-      --line: #2b3648;
-      --accent: #36b37e;
-      --blue: #4f7cff;
-      --yellow: #f5c84c;
-      --danger: #ef5f73;
+      color-scheme: dark;
+      --bg: #0d1118;
+      --panel: #151c27;
+      --panel-2: #1c2634;
+      --line: #2d394a;
+      --text: #f8fafc;
+      --muted: #9aa7b8;
+      --accent: #38c985;
+      --blue: #5894ff;
+      --yellow: #f7c948;
+      --danger: #ef6076;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-tap-highlight-color: transparent;
     }
-    main { width: min(720px, 100%); margin: 0 auto; padding: 14px 12px 26px; }
-    header, .row, .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    main { width: min(720px, 100%); margin: 0 auto; padding: 14px 12px 28px; }
+    header, .top, .habit-row, .sleep-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     header { margin-bottom: 12px; }
     h1, h2, p { margin: 0; letter-spacing: 0; }
     h1 { font-size: 24px; line-height: 1.1; }
-    h2 { font-size: 17px; }
+    h2 { font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
     .muted { color: var(--muted); font-size: 13px; line-height: 1.35; }
     .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }
     button, input, select {
-      min-height: 40px;
+      min-height: 42px;
       border-radius: 8px;
       border: 1px solid var(--line);
       font: inherit;
     }
-    button { background: var(--soft); color: var(--text); font-weight: 700; cursor: pointer; padding: 0 11px; }
-    button.active, button.primary { background: var(--accent); border-color: var(--accent); color: #06150f; }
+    button { background: var(--panel-2); color: var(--text); font-weight: 700; cursor: pointer; padding: 0 11px; }
+    button.active, button.primary { background: var(--accent); border-color: var(--accent); color: #04140d; }
     button.ghost { background: transparent; color: var(--muted); }
     button.danger { background: transparent; color: var(--danger); }
-    button.icon { width: 40px; padding: 0; }
-    input, select { width: 100%; background: var(--panel); color: var(--text); padding: 0 11px; }
+    input, select { width: 100%; min-width: 0; background: var(--panel); color: var(--text); padding: 0 11px; }
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -56,36 +56,64 @@
     .hidden { display: none; }
     .list { display: grid; gap: 10px; }
     .empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center; }
+    .summary { display: grid; gap: 6px; }
     .today-card, .habit-card { display: grid; gap: 10px; }
     .actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-    .habit-actions { display: grid; grid-template-columns: 40px 40px 1fr 1fr; gap: 8px; }
+    .habit-card.dragging { opacity: .55; transform: scale(.99); }
+    .habit-card.drop-before { border-top-color: var(--accent); }
+    .habit-row { align-items: flex-start; }
+    .drag-handle {
+      width: 42px;
+      min-width: 42px;
+      min-height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--panel-2);
+      color: var(--muted);
+      touch-action: none;
+      cursor: grab;
+      user-select: none;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .habit-title { min-width: 0; flex: 1; display: grid; gap: 3px; }
+    .habit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .settings { display: grid; gap: 8px; grid-template-columns: 1fr; }
     .add-form, .reminder-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-    .sleep-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+    .sleep-panel { background: linear-gradient(180deg, #142031, var(--panel)); }
+    .sleep-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
     .sleep-rate { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; grid-column: 1 / -1; }
+    .sleep-rate button.selected { background: var(--yellow); border-color: var(--yellow); color: #1c1602; }
+    .sleep-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
+    .sleep-kpi { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .sleep-kpi b { display: block; font-size: 20px; line-height: 1.1; }
     .sleep-chart {
       position: relative;
-      min-height: 180px;
+      min-height: 198px;
       display: grid;
       grid-template-columns: repeat(7, 1fr);
       align-items: end;
       gap: 8px;
-      padding-top: 16px;
+      padding: 18px 0 0;
       border-top: 1px solid var(--line);
     }
-    .sleep-line { position: absolute; inset: 22px 0 42px; width: 100%; height: 112px; pointer-events: none; }
+    .sleep-line { position: absolute; inset: 24px 0 48px; width: 100%; height: 118px; pointer-events: none; overflow: visible; }
     .sleep-line polyline { fill: none; stroke: var(--yellow); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
     .sleep-day { min-width: 0; display: grid; gap: 6px; text-align: center; color: var(--muted); font-size: 11px; }
-    .bar-wrap { height: 112px; display: grid; align-items: end; position: relative; }
-    .bar { min-height: 2px; border-radius: 6px 6px 2px 2px; background: linear-gradient(180deg, #8b5cf6, var(--blue)); }
-    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--yellow); justify-self: center; border: 2px solid var(--accent); }
-    .modal { position: fixed; inset: 0; z-index: 5; display: grid; place-items: end center; padding: 14px 12px; background: rgba(0,0,0,.45); }
+    .bar-wrap { height: 118px; display: grid; align-items: end; position: relative; border-bottom: 1px solid rgba(255,255,255,.1); }
+    .bar { min-height: 2px; border-radius: 6px 6px 2px 2px; background: linear-gradient(180deg, #8b5cf6, var(--blue)); box-shadow: 0 0 18px rgba(88,148,255,.18); }
+    .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--yellow); justify-self: center; border: 2px solid var(--accent); z-index: 1; }
+    .toast { position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 10; display: none; place-items: center; }
+    .toast span { max-width: 520px; width: 100%; background: #0b0f16; border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; color: var(--text); }
+    .toast.show { display: grid; }
+    .modal { position: fixed; inset: 0; z-index: 5; display: grid; place-items: end center; padding: 14px 12px; background: rgba(0,0,0,.48); }
     .modal.hidden { display: none; }
     .modal-card { width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: grid; gap: 10px; }
     .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     @media (max-width: 460px) {
-      .actions, .habit-actions, .add-form, .reminder-form { grid-template-columns: 1fr; }
-      .habit-actions .icon { width: 100%; }
+      .actions, .habit-actions, .add-form, .reminder-form, .sleep-summary { grid-template-columns: 1fr; }
+      .sleep-chart { gap: 5px; }
     }
   </style>
 </head>
@@ -106,18 +134,20 @@
     </nav>
 
     <section id="view-today">
-      <div class="panel">
+      <div class="panel summary">
         <h2 id="summary">Загрузка</h2>
-        <p class="muted">Без процентов. Просто отмечаем день и не устраиваем бухгалтерию души.</p>
+        <p class="muted">Без процентов. Сегодня достаточно одного честного действия.</p>
       </div>
       <div class="list" id="today-list"></div>
     </section>
 
     <section id="view-sleep" class="hidden">
-      <div class="panel">
-        <div class="top">
-          <h2>Сон</h2>
-          <span class="muted">последние 7 дней</span>
+      <div class="panel sleep-panel">
+        <div class="sleep-head">
+          <div>
+            <h2>Сон</h2>
+            <p class="muted">часы и качество за 7 дней</p>
+          </div>
         </div>
         <form class="sleep-form" id="sleep-form">
           <input id="sleep-out" type="time" value="23:30" aria-label="Лёг спать">
@@ -130,6 +160,10 @@
             <button type="button" data-rate="5">5</button>
           </div>
         </form>
+        <div class="sleep-summary">
+          <div class="sleep-kpi"><b id="sleep-avg">-</b><span class="muted">средний сон</span></div>
+          <div class="sleep-kpi"><b id="sleep-quality">-</b><span class="muted">качество</span></div>
+        </div>
         <div class="sleep-chart" id="sleep-chart"></div>
       </div>
     </section>
@@ -153,6 +187,7 @@
       </div>
     </div>
   </div>
+  <div class="toast" id="toast"><span></span></div>
 
   <script>
     const tg = window.Telegram?.WebApp;
@@ -160,15 +195,24 @@
     tg?.expand();
 
     const initData = tg?.initData || "";
-    const state = { data: null, sleep: null, tab: "today", rename: null };
+    const state = { data: null, sleep: null, tab: "today", rename: null, refreshing: false, draggingId: null };
     const $ = (selector) => document.querySelector(selector);
     const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     }[char]));
 
+    function showToast(message) {
+      const toast = $("#toast");
+      toast.querySelector("span").textContent = message;
+      toast.classList.add("show");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove("show"), 2200);
+    }
+
     async function request(path, body = {}, method = "POST") {
       const response = await fetch(path, {
         method,
+        cache: "no-store",
         headers: { "Content-Type": "application/json", "X-Telegram-Init-Data": initData },
         body: body === null ? undefined : JSON.stringify(body),
       });
@@ -182,16 +226,25 @@
         $(`#view-${name}`).classList.toggle("hidden", name !== tab);
         $(`#tab-${name}`).classList.toggle("active", name === tab);
       });
+      refresh();
     }
 
     async function refresh() {
-      const [data, sleep] = await Promise.all([
-        request("/api/state", null, "GET"),
-        request("/api/sleep/stats", null, "GET"),
-      ]);
-      state.data = data;
-      state.sleep = sleep;
-      render();
+      if (state.refreshing) return;
+      state.refreshing = true;
+      try {
+        const [data, sleep] = await Promise.all([
+          request("/api/state", null, "GET"),
+          request("/api/sleep/stats", null, "GET"),
+        ]);
+        state.data = data;
+        state.sleep = sleep;
+        render();
+      } catch {
+        $("#summary").textContent = initData ? "Не удалось загрузить данные." : "Открой Mini App из Telegram.";
+      } finally {
+        state.refreshing = false;
+      }
     }
 
     function render() {
@@ -213,11 +266,9 @@
         const status = habit.done_today ? "готово" : habit.missed_today ? "не сегодня" : "ждёт";
         return `
           <article class="panel today-card">
-            <div class="top">
-              <div>
-                <h2>${escapeHtml(habit.name)}</h2>
-                <p class="muted">${escapeHtml(habit.goal_text)} · серия ${habit.streak} · ${status}</p>
-              </div>
+            <div>
+              <h2>${escapeHtml(habit.name)}</h2>
+              <p class="muted">${escapeHtml(habit.goal_text)} · серия ${habit.streak} · ${status}</p>
             </div>
             <div class="actions">
               <button class="primary" data-action="mark" data-id="${habit.id}" type="button">Выполнил</button>
@@ -250,17 +301,16 @@
 
     function renderManage(data) {
       const habits = data.habits || [];
-      $("#habit-list").innerHTML = habits.length ? habits.map((habit, index) => `
-        <article class="panel habit-card">
-          <div class="top">
-            <div>
+      $("#habit-list").innerHTML = habits.length ? habits.map((habit) => `
+        <article class="panel habit-card" data-id="${habit.id}">
+          <div class="habit-row">
+            <button class="drag-handle" data-action="drag" data-id="${habit.id}" type="button" aria-label="Переместить">☰</button>
+            <div class="habit-title">
               <h2>${escapeHtml(habit.name)}</h2>
               <p class="muted">${escapeHtml(habit.goal_text)} · всего отметок ${habit.total_completed}</p>
             </div>
           </div>
           <div class="habit-actions">
-            <button class="icon ghost" data-action="move" data-direction="up" data-id="${habit.id}" ${index === 0 ? "disabled" : ""} type="button">↑</button>
-            <button class="icon ghost" data-action="move" data-direction="down" data-id="${habit.id}" ${index === habits.length - 1 ? "disabled" : ""} type="button">↓</button>
             <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}" type="button">Название</button>
             <button class="danger" data-action="delete" data-id="${habit.id}" type="button">Удалить</button>
           </div>
@@ -277,17 +327,24 @@
     }
 
     function renderSleep(items) {
+      const filled = items.filter((item) => Number(item.hours) > 0);
+      const avgHours = filled.length ? (filled.reduce((sum, item) => sum + Number(item.hours || 0), 0) / filled.length).toFixed(1) : "-";
+      const avgRate = filled.length ? (filled.reduce((sum, item) => sum + Number(item.rate || 0), 0) / filled.length).toFixed(1) : "-";
+      $("#sleep-avg").textContent = avgHours === "-" ? "-" : `${avgHours} ч`;
+      $("#sleep-quality").textContent = avgRate === "-" ? "-" : `${avgRate}/5`;
+
+      const step = items.length > 1 ? 600 / (items.length - 1) : 600;
       const points = items.map((item, index) => {
         const rate = Math.max(0, Math.min(5, Number(item.rate) || 0));
-        return `${index * 100},${112 - rate / 5 * 100}`;
+        return `${Math.round(index * step)},${118 - rate / 5 * 108}`;
       }).join(" ");
-      $("#sleep-chart").innerHTML = `<svg class="sleep-line" viewBox="0 0 600 112" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>` + items.map((item) => {
+      $("#sleep-chart").innerHTML = `<svg class="sleep-line" viewBox="0 0 600 118" preserveAspectRatio="none"><polyline points="${points}"></polyline></svg>` + items.map((item) => {
         const hours = Math.max(0, Math.min(12, Number(item.hours) || 0));
         const rate = Math.max(0, Math.min(5, Number(item.rate) || 0));
         return `
           <div class="sleep-day" title="${item.sleep_date}: ${hours} ч, качество ${rate}/5">
             <div class="bar-wrap">
-              <i class="dot" style="transform: translateY(${(5 - rate) * 18}px); opacity:${rate ? 1 : .25}"></i>
+              <i class="dot" style="transform: translateY(${(5 - rate) * 19}px); opacity:${rate ? 1 : .18}"></i>
               <div class="bar" style="height:${Math.round(hours / 12 * 100)}%"></div>
             </div>
             <b>${hours || "-"}</b>
@@ -295,6 +352,12 @@
           </div>
         `;
       }).join("");
+      const today = items.at(-1);
+      if (today?.sleep_out) $("#sleep-out").value = today.sleep_out;
+      if (today?.sleep_up) $("#sleep-up").value = today.sleep_up;
+      $("#sleep-rate").querySelectorAll("button").forEach((button) => {
+        button.classList.toggle("selected", Number(button.dataset.rate) === Number(today?.rate || 0));
+      });
     }
 
     async function updateAfter(action) {
@@ -302,9 +365,68 @@
       render();
     }
 
+    function orderedHabitIds() {
+      return [...$("#habit-list").querySelectorAll(".habit-card")].map((item) => Number(item.dataset.id));
+    }
+
+    async function saveOrder() {
+      const habit_ids = orderedHabitIds();
+      state.data = await request("/api/habits/reorder", { habit_ids });
+      render();
+      showToast("Порядок сохранён");
+    }
+
+    function nearestCard(y, dragged) {
+      const cards = [...$("#habit-list").querySelectorAll(".habit-card:not(.dragging)")];
+      return cards.reduce((closest, card) => {
+        const box = card.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        return offset < 0 && offset > closest.offset ? { offset, card } : closest;
+      }, { offset: Number.NEGATIVE_INFINITY, card: null }).card;
+    }
+
+    function startDrag(event) {
+      const handle = event.target.closest('[data-action="drag"]');
+      if (!handle) return;
+      const card = handle.closest(".habit-card");
+      state.draggingId = Number(card.dataset.id);
+      card.classList.add("dragging");
+      handle.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+    }
+
+    function moveDrag(event) {
+      if (!state.draggingId) return;
+      const list = $("#habit-list");
+      const dragged = list.querySelector(`.habit-card[data-id="${state.draggingId}"]`);
+      const before = nearestCard(event.clientY, dragged);
+      if (before) list.insertBefore(dragged, before);
+      else list.appendChild(dragged);
+    }
+
+    async function endDrag() {
+      if (!state.draggingId) return;
+      const dragged = $("#habit-list").querySelector(".habit-card.dragging");
+      dragged?.classList.remove("dragging");
+      state.draggingId = null;
+      try {
+        await saveOrder();
+      } catch (error) {
+        showToast(error.message || "Не удалось сохранить порядок");
+        refresh();
+      }
+    }
+
     $("#tab-today").addEventListener("click", () => setTab("today"));
     $("#tab-sleep").addEventListener("click", () => setTab("sleep"));
     $("#tab-manage").addEventListener("click", () => setTab("manage"));
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) refresh();
+    });
+    setInterval(() => {
+      if (!document.hidden && state.tab === "today") refresh();
+    }, 15000);
 
     $("#add-form").addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -321,6 +443,11 @@
       const { action, id } = button.dataset;
       await updateAfter(() => request(`/api/habits/${id}/${action}`));
     });
+
+    $("#habit-list").addEventListener("pointerdown", startDrag);
+    $("#habit-list").addEventListener("pointermove", moveDrag);
+    $("#habit-list").addEventListener("pointerup", endDrag);
+    $("#habit-list").addEventListener("pointercancel", endDrag);
 
     $("#habit-list").addEventListener("change", async (event) => {
       const select = event.target.closest('select[data-action="goal"]');
@@ -339,8 +466,8 @@
 
     $("#habit-list").addEventListener("click", async (event) => {
       const button = event.target.closest("button[data-action]");
-      if (!button) return;
-      const { action, id, name, direction } = button.dataset;
+      if (!button || button.dataset.action === "drag") return;
+      const { action, id, name } = button.dataset;
       if (action === "rename") {
         state.rename = id;
         $("#rename-input").value = name || "";
@@ -349,7 +476,6 @@
         return;
       }
       if (action === "delete" && !confirm("Удалить привычку?")) return;
-      if (action === "move") await updateAfter(() => request(`/api/habits/${id}/move`, { direction }));
       if (action === "delete") await updateAfter(() => request(`/api/habits/${id}/delete`));
       if (action === "reminder-off") await updateAfter(() => request(`/api/habits/${id}/reminder/off`));
     });
@@ -363,6 +489,7 @@
         rate: Number(button.dataset.rate),
       });
       renderSleep(state.sleep.items || []);
+      showToast("Сон сохранён");
     });
 
     $("#rename-cancel").addEventListener("click", () => $("#rename-modal").classList.add("hidden"));
@@ -374,9 +501,7 @@
       $("#rename-modal").classList.add("hidden");
     });
 
-    refresh().catch(() => {
-      $("#summary").textContent = initData ? "Не удалось загрузить данные." : "Открой Mini App из Telegram.";
-    });
+    refresh();
   </script>
 </body>
 </html>

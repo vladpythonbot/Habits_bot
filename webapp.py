@@ -19,10 +19,10 @@ from db import (
     get_missed_habit_ids,
     get_user_habits,
     get_sleep_stats,
-    move_habit,
     mark_habit_completed,
     parse_date,
     record_habit_miss,
+    reorder_habits,
     save_habit,
     save_sleep_log,
     set_habit_reminder,
@@ -37,6 +37,11 @@ BASE_DIR = Path(__file__).resolve().parent
 WEBAPP_DIR = BASE_DIR / "miniapp"
 MAX_INIT_DATA_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", str(24 * 60 * 60)))
 logger = logging.getLogger(__name__)
+
+
+
+def json_response(data: dict, status: int = 200) -> web.Response:
+    return web.json_response(data, status=status, headers={"Cache-Control": "no-store"})
 
 
 def verify_init_data(init_data: str) -> dict:
@@ -150,7 +155,7 @@ async def get_json_payload(request: web.Request) -> dict:
 
 
 async def index(_: web.Request) -> web.FileResponse:
-    return web.FileResponse(WEBAPP_DIR / "index.html")
+    return web.FileResponse(WEBAPP_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
 
 async def api_state(request: web.Request) -> web.Response:
@@ -161,7 +166,7 @@ async def api_state(request: web.Request) -> web.Response:
     items = [await habit_payload(user_id, habit, missed_ids) for habit in habits]
     done_count = sum(1 for item in items if item["done_today"])
 
-    return web.json_response({
+    return json_response({
         "user": {"id": user_id, "first_name": user.get("first_name", "")},
         "today": today_str(),
         "summary": {
@@ -209,16 +214,17 @@ async def api_delete_habit(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
-async def api_move_habit(request: web.Request) -> web.Response:
+async def api_reorder_habits(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     payload = await get_json_payload(request)
-    habit_id = int(request.match_info["habit_id"])
-    direction = str(payload.get("direction", "")).strip()
-    if direction not in {"up", "down"}:
-        raise web.HTTPBadRequest(text="Invalid direction")
-    moved = await move_habit(int(user["id"]), habit_id, direction)
-    if not moved:
-        raise web.HTTPNotFound(text="Habit not found")
+    try:
+        habit_ids = [int(value) for value in payload.get("habit_ids", [])]
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(text="Invalid habit_ids") from exc
+
+    saved = await reorder_habits(int(user["id"]), habit_ids)
+    if not saved:
+        raise web.HTTPBadRequest(text="Invalid habit order")
     return await api_state(request)
 
 
@@ -274,7 +280,7 @@ async def api_stats(request: web.Request) -> web.Response:
     today_done = sum(1 for habit in habits if habit[5] == today)
     today_open = sum(1 for habit in habits if habit[5] != today and habit[0] not in missed_today)
 
-    return web.json_response({
+    return json_response({
         "today": today,
         "habits_count": len(habits),
         "total_completed": sum(habit[4] for habit in habits),
@@ -296,7 +302,7 @@ async def api_sleep_stats(request: web.Request) -> web.Response:
             raise web.HTTPBadRequest(text="Invalid user_id") from exc
         if requested_user_id_int != user_id:
             raise web.HTTPForbidden(text="Forbidden user_id")
-    return web.json_response({"items": await get_sleep_stats(user_id, days=7)})
+    return json_response({"items": await get_sleep_stats(user_id, days=7)})
 
 
 async def api_save_sleep_today(request: web.Request) -> web.Response:
@@ -348,7 +354,7 @@ async def error_middleware(request: web.Request, handler):
         raise
     except Exception:
         logger.exception("Web API request failed: %s %s", request.method, request.path)
-        return web.json_response({"error": "internal_error"}, status=500)
+        return json_response({"error": "internal_error"}, status=500)
 
 
 def create_web_app() -> web.Application:
@@ -363,7 +369,7 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits", api_add_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/rename", api_rename_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/delete", api_delete_habit)
-    app.router.add_post("/api/habits/{habit_id:\\d+}/move", api_move_habit)
+    app.router.add_post("/api/habits/reorder", api_reorder_habits)
     app.router.add_post("/api/habits/{habit_id:\\d+}/goal", api_set_goal)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder", api_set_reminder)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder/off", api_disable_reminder)

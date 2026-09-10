@@ -276,35 +276,26 @@ async def get_user_habits(
         return await cursor.fetchall()
 
 
-async def move_habit(user_id: int, habit_id: int, direction: str) -> bool:
-    if direction not in {"up", "down"}:
+async def reorder_habits(user_id: int, habit_ids: list[int]) -> bool:
+    if not habit_ids or len(habit_ids) != len(set(habit_ids)):
         return False
 
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT id, habit_position
+            SELECT id
             FROM habits
-            WHERE user_id = ? AND id = ? AND archived_at IS NULL
-        """, (user_id, habit_id))
-        current = await cursor.fetchone()
-        if not current:
+            WHERE user_id = ? AND archived_at IS NULL
+        """, (user_id,))
+        existing_ids = {row[0] for row in await cursor.fetchall()}
+        if set(habit_ids) != existing_ids:
             return False
 
-        operator = "<" if direction == "up" else ">"
-        order = "DESC" if direction == "up" else "ASC"
-        cursor = await db.execute(f"""
-            SELECT id, habit_position
-            FROM habits
-            WHERE user_id = ? AND archived_at IS NULL AND habit_position {operator} ?
-            ORDER BY habit_position {order}, id {order}
-            LIMIT 1
-        """, (user_id, current[1]))
-        neighbor = await cursor.fetchone()
-        if not neighbor:
-            return True
-
-        await db.execute("UPDATE habits SET habit_position = ? WHERE id = ? AND user_id = ?", (neighbor[1], current[0], user_id))
-        await db.execute("UPDATE habits SET habit_position = ? WHERE id = ? AND user_id = ?", (current[1], neighbor[0], user_id))
+        for position, habit_id in enumerate(habit_ids, start=1):
+            await db.execute("""
+                UPDATE habits
+                SET habit_position = ?
+                WHERE user_id = ? AND id = ?
+            """, (position, user_id, habit_id))
         await db.commit()
         return True
 

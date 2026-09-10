@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
 from bot import bot
 from db import (
@@ -36,6 +36,14 @@ main_keyboard = ReplyKeyboardMarkup(
     one_time_keyboard=False,
     is_persistent=True,
 )
+
+
+def mini_app_keyboard() -> InlineKeyboardMarkup | None:
+    if not MINI_APP_URL:
+        return None
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Открыть Mini App", web_app=WebAppInfo(url=MINI_APP_URL)),
+    ]])
 
 
 def habit_name(habit) -> str:
@@ -104,7 +112,7 @@ async def start(message: types.Message, state: FSMContext):
 async def open_mini_app(message: types.Message, state: FSMContext):
     await state.clear()
     if MINI_APP_URL:
-        await message.answer("Mini App открывается кнопкой меню рядом с полем ввода.", reply_markup=main_keyboard)
+        await message.answer("Mini App готов.", reply_markup=mini_app_keyboard())
         return
     await message.answer("Mini App пока не настроен.", reply_markup=main_keyboard)
 
@@ -124,6 +132,7 @@ async def statistics(message: types.Message, state: FSMContext):
     await message.answer(text, reply_markup=main_keyboard)
 
 
+@router.message(Command("today"))
 @router.message(F.text.in_(["🟢 Сегодня", "Сегодня"]))
 async def today(message: types.Message, state: FSMContext):
     await state.clear()
