@@ -24,6 +24,7 @@ from db import (
 router = Router()
 logger = logging.getLogger(__name__)
 
+APP_VERSION = "2026.09.10.1"
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 MINI_APP_URL = os.getenv("MINI_APP_URL") or (
     f"https://{RAILWAY_PUBLIC_DOMAIN}/miniapp" if RAILWAY_PUBLIC_DOMAIN else None
