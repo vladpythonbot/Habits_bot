@@ -202,6 +202,16 @@ async def init_db():
                 PRIMARY KEY(user_id, sleep_date)
             )
         """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS daily_notes (
+                user_id INTEGER NOT NULL,
+                note_date TEXT NOT NULL,
+                note_text TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, note_date)
+            )
+        """)
         await db.execute("""
             INSERT OR IGNORE INTO habit_logs (user_id, habit_id, completed_date, created_at)
             SELECT user_id, id, last_completed_date, datetime('now')
@@ -784,6 +794,34 @@ async def get_sleep_stats(user_id: int, days: int = 7) -> list[dict]:
             "sleep_up": sleep_up,
         })
     return result
+
+
+async def get_daily_note(user_id: int, note_date: str) -> str:
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT note_text
+            FROM daily_notes
+            WHERE user_id = ? AND note_date = ?
+        """, (user_id, note_date))
+        row = await cursor.fetchone()
+        return row[0] if row else ""
+
+
+async def save_daily_note(user_id: int, note_date: str, note_text: str) -> bool:
+    if len(note_text) > 1200:
+        return False
+
+    now = datetime.now().isoformat(timespec="seconds")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO daily_notes (user_id, note_date, note_text, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, note_date) DO UPDATE SET
+                note_text = excluded.note_text,
+                updated_at = excluded.updated_at
+        """, (user_id, note_date, note_text, now))
+        await db.commit()
+        return True
 
 
 async def get_all_users_with_habits():

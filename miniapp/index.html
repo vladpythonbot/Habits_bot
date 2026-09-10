@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HabitFlow</title>
+  <title>Мой блокнот</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
@@ -12,6 +12,7 @@
       --chrome: #14202b;
       --panel: #ffffff;
       --panel-2: #f7f9fd;
+      --paper: #fffaf0;
       --line: #dfe6f1;
       --text: #06142c;
       --muted: #8fa0bb;
@@ -63,7 +64,7 @@
       box-shadow: 0 16px 34px rgba(15, 29, 50, .13);
       transform: translateX(-50%);
     }
-    button, input, select {
+    button, input, select, textarea {
       min-height: 42px;
       border-radius: 8px;
       border: 1px solid var(--line);
@@ -76,7 +77,8 @@
     button.done { background: rgba(116, 111, 255, .12); border-color: rgba(116, 111, 255, .4); color: var(--accent); }
     button.skipped { background: rgba(247, 201, 72, .12); border-color: rgba(247, 201, 72, .45); color: var(--yellow); }
     button:disabled { cursor: default; opacity: .9; }
-    input, select { width: 100%; min-width: 0; background: var(--panel); color: var(--text); padding: 0 11px; }
+    input, select, textarea { width: 100%; min-width: 0; background: var(--panel); color: var(--text); padding: 0 11px; }
+    textarea { min-height: 118px; padding: 13px 14px; resize: vertical; line-height: 1.45; }
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -92,6 +94,22 @@
     .summary { background: transparent; border: 0; box-shadow: none; padding: 0; margin-bottom: 10px; }
     .summary p { display: none; }
     .summary h2 { font-size: 30px; }
+    .note-card {
+      background:
+        linear-gradient(transparent 31px, rgba(222, 195, 130, .2) 32px),
+        var(--paper);
+      background-size: 100% 32px;
+      border-color: #f0dfb7;
+    }
+    .note-card textarea {
+      border: 0;
+      background: transparent;
+      padding-left: 0;
+      padding-right: 0;
+      outline: none;
+    }
+    .note-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .note-status { color: #b58a26; font-size: 12px; font-weight: 700; }
     .primary-card {
       min-height: 140px;
       overflow: hidden;
@@ -196,26 +214,33 @@
   <main>
     <header>
       <div>
-        <h1>Трекер привычек</h1>
+        <h1>Мой блокнот</h1>
         <p class="muted" id="today-label">Сегодня</p>
       </div>
       <p class="muted" id="hello"></p>
     </header>
 
     <nav class="tabs">
-      <button class="active" id="tab-today" type="button">Сегодня</button>
+      <button class="active" id="tab-today" type="button">День</button>
       <button id="tab-sleep" type="button">Сон</button>
-      <button id="tab-manage" type="button">Привычки</button>
+      <button id="tab-manage" type="button">Список</button>
     </nav>
 
     <section id="view-today">
       <div class="panel summary">
         <h2 id="summary">Загрузка</h2>
-        <p class="muted">Без процентов. Сегодня достаточно одного честного действия.</p>
+        <p class="muted">Без процентов. Только то, что помогает держать день.</p>
       </div>
       <div id="primary-today"></div>
       <div class="list" id="today-list"></div>
       <button class="quick-add" id="quick-add" type="button">＋ Добавить привычку</button>
+      <section class="panel note-card">
+        <div class="note-head">
+          <h2>Заметка дня</h2>
+          <span class="note-status" id="note-status">сохранено</span>
+        </div>
+        <textarea id="daily-note" maxlength="1200" placeholder="Пара строк для себя: что держать в фокусе, что отпустить, что заметил."></textarea>
+      </section>
     </section>
 
     <section id="view-sleep" class="hidden">
@@ -247,7 +272,7 @@
 
     <section id="view-manage" class="hidden">
       <form class="panel add-form" id="add-form">
-        <input id="habit-name" maxlength="80" placeholder="Новая привычка" autocomplete="off">
+        <input id="habit-name" maxlength="80" placeholder="Новая строка в блокноте" autocomplete="off">
         <button class="primary" type="submit">Добавить</button>
       </form>
       <div class="list" id="habit-list"></div>
@@ -329,8 +354,15 @@
       $("#today-label").textContent = data.today || "Сегодня";
       $("#hello").textContent = data.user?.first_name || "";
       renderToday(data);
+      renderNote(data.note || "");
       renderManage(data);
       renderSleep(state.sleep?.items || []);
+    }
+
+    function renderNote(note) {
+      const input = $("#daily-note");
+      if (document.activeElement !== input && input.value !== note) input.value = note;
+      $("#note-status").textContent = "сохранено";
     }
 
     function habitStatus(habit) {
@@ -565,6 +597,18 @@
     $("#tab-sleep").addEventListener("click", () => setTab("sleep"));
     $("#tab-manage").addEventListener("click", () => setTab("manage"));
     $("#quick-add").addEventListener("click", () => setTab("manage"));
+    $("#daily-note").addEventListener("input", () => {
+      $("#note-status").textContent = "пишу";
+      clearTimeout(state.noteTimer);
+      state.noteTimer = setTimeout(async () => {
+        try {
+          state.data = await request("/api/note/today", { note: $("#daily-note").value });
+          $("#note-status").textContent = "сохранено";
+        } catch {
+          $("#note-status").textContent = "не сохранено";
+        }
+      }, 650);
+    });
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) refresh();

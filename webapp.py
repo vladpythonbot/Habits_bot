@@ -14,6 +14,7 @@ from db import (
     date_range,
     delete_habit_from_db,
     disable_habit_reminder,
+    get_daily_note,
     get_habit_reminder,
     get_habit_logs,
     get_missed_habit_ids,
@@ -24,6 +25,7 @@ from db import (
     record_habit_miss,
     reorder_habits,
     save_habit,
+    save_daily_note,
     save_sleep_log,
     set_primary_habit,
     set_primary_habit_time,
@@ -175,6 +177,7 @@ async def api_state(request: web.Request) -> web.Response:
     return json_response({
         "user": {"id": user_id, "first_name": user.get("first_name", "")},
         "today": today_str(),
+        "note": await get_daily_note(user_id, today_str()),
         "summary": {
             "total": len(items),
             "done": done_count,
@@ -339,6 +342,16 @@ async def api_sleep_stats(request: web.Request) -> web.Response:
     return json_response({"items": await get_sleep_stats(user_id, days=7)})
 
 
+async def api_save_note_today(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    payload = await get_json_payload(request)
+    note = str(payload.get("note", ""))
+    if len(note) > 1200:
+        raise web.HTTPBadRequest(text="Note is too long")
+    await save_daily_note(int(user["id"]), today_str(), note)
+    return await api_state(request)
+
+
 async def api_save_sleep_today(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     payload = await get_json_payload(request)
@@ -398,6 +411,7 @@ def create_web_app() -> web.Application:
     app.router.add_get("/api/state", api_state)
     app.router.add_post("/api/state", api_state)
     app.router.add_post("/api/stats", api_stats)
+    app.router.add_post("/api/note/today", api_save_note_today)
     app.router.add_get("/api/sleep/stats", api_sleep_stats)
     app.router.add_post("/api/sleep/today", api_save_sleep_today)
     app.router.add_post("/api/habits", api_add_habit)

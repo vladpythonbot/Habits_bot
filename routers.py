@@ -24,14 +24,14 @@ from db import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "2026.09.10.1"
+APP_VERSION = "2026.09.10.2"
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 MINI_APP_URL = os.getenv("MINI_APP_URL") or (
     f"https://{RAILWAY_PUBLIC_DOMAIN}/miniapp" if RAILWAY_PUBLIC_DOMAIN else None
 )
 
 main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="Сегодня")]],
+    keyboard=[[KeyboardButton(text="Блокнот на сегодня")]],
     resize_keyboard=True,
     one_time_keyboard=False,
     is_persistent=True,
@@ -87,7 +87,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     if not habits:
         await answer_or_edit(
             obj,
-            "🟣 <b>HabitFlow</b>\n\nПривычек пока нет. Добавление и управление — в Mini App.",
+            "📓 <b>Мой блокнот</b>\n\nПока пусто. Добавь одну привычку в Mini App — без героизма, просто чтобы день имел опору.",
         )
         return
 
@@ -98,18 +98,18 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     pending = [habit for habit in ordered if habit[5] != today and habit[0] not in missed_ids]
     completed = [habit for habit in ordered if habit[5] == today]
 
-    text = "🟣 <b>HabitFlow</b>"
+    text = "📓 <b>Мой блокнот на сегодня</b>"
     if primary:
-        text += f"\n\n⭐ <b>Главная:</b> {habit_name(primary)} · {escape(primary_time(primary))}"
+        text += f"\n\nГлавная строка дня: <b>{habit_name(primary)}</b> · {escape(primary_time(primary))}"
 
     if pending:
-        text += "\n\n<b>Сегодня не отмечено:</b>"
+        text += "\n\n<b>Ещё ждёт:</b>"
         text += "".join(f"\n• <b>{habit_name(habit)}</b>" for habit in pending)
     else:
-        text += "\n\n🟢 На сегодня всё решено."
+        text += "\n\nНа сегодня всё закрыто. Достаточно."
 
     if completed:
-        text += "\n\n<b>Выполнено:</b>"
+        text += "\n\n<b>Уже сделал:</b>"
         text += "".join(f"\n• <b>{habit_name(habit)}</b>" for habit in completed)
 
     await answer_or_edit(obj, text, today_keyboard(habits, missed_ids))
@@ -119,7 +119,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "Меню под рукой. Управление привычками — в Mini App.",
+        "Открыл блокнот. Всё управление — в Mini App, здесь только самое нужное.",
         reply_markup=main_keyboard,
     )
     await show_today(message, message.from_user.id)
@@ -129,7 +129,7 @@ async def start(message: types.Message, state: FSMContext):
 async def open_mini_app(message: types.Message, state: FSMContext):
     await state.clear()
     if MINI_APP_URL:
-        await message.answer("Mini App готов.", reply_markup=mini_app_keyboard())
+        await message.answer("Открываю твой блокнот.", reply_markup=mini_app_keyboard())
         return
     await message.answer("Mini App пока не настроен.", reply_markup=main_keyboard)
 
@@ -144,17 +144,17 @@ async def statistics(message: types.Message, state: FSMContext):
     primary = next((habit for habit in habits if is_primary_habit(habit)), None)
 
     text = (
-        f"Привычек: {len(habits)}\n"
-        f"Сегодня отмечено: {done}\n"
-        f"Ждёт отметки: {open_count}"
+        f"В блокноте привычек: {len(habits)}\n"
+        f"Сегодня уже сделано: {done}\n"
+        f"Ещё ждёт: {open_count}"
     )
     if primary:
-        text += f"\nГлавная: {habit_name(primary)} · {escape(primary_time(primary))}"
+        text += f"\nГлавная строка: {habit_name(primary)} · {escape(primary_time(primary))}"
     await message.answer(text, reply_markup=main_keyboard)
 
 
 @router.message(Command("today"))
-@router.message(F.text.in_(["Сегодня", "🟢 Сегодня"]))
+@router.message(F.text.in_(["Сегодня", "Блокнот на сегодня", "🟢 Сегодня"]))
 async def today(message: types.Message, state: FSMContext):
     await state.clear()
     await show_today(message, message.from_user.id)
@@ -165,9 +165,9 @@ async def mark_habit(callback: types.CallbackQuery):
     habit_id = int(callback.data.split("_")[-1])
     success, info = await mark_habit_completed(callback.from_user.id, habit_id)
     if not success:
-        await callback.answer("Уже отмечено сегодня", show_alert=True)
+        await callback.answer("Уже записано на сегодня", show_alert=True)
         return
-    await callback.answer(f"Отмечено: {info['habit_name']}")
+    await callback.answer(f"Записал: {info['habit_name']}")
     await show_today(callback, callback.from_user.id)
 
 
@@ -176,9 +176,9 @@ async def undo_habit(callback: types.CallbackQuery):
     habit_id = int(callback.data.split("_")[-1])
     success, info = await unmark_habit_completed(callback.from_user.id, habit_id)
     if not success:
-        await callback.answer("Сегодняшней отметки уже нет", show_alert=True)
+        await callback.answer("Этой отметки уже нет", show_alert=True)
         return
-    await callback.answer(f"Отменено: {info['habit_name']}")
+    await callback.answer(f"Убрал: {info['habit_name']}")
     await show_today(callback, callback.from_user.id)
 
 
@@ -186,7 +186,7 @@ async def undo_habit(callback: types.CallbackQuery):
 async def miss_habit(callback: types.CallbackQuery):
     habit_id = int(callback.data.split("_")[-1])
     await record_habit_miss(callback.from_user.id, habit_id)
-    await callback.answer("Отмечено: не сегодня")
+    await callback.answer("Ок, не сегодня")
     await show_today(callback, callback.from_user.id)
 
 
@@ -207,7 +207,7 @@ async def send_habit_reminder_to_user(
     try:
         await bot.send_message(
             chat_id=user_id,
-            text=f"⏰ <b>Напоминание</b>\n\n📖 <b>{escape(habit_name_text)}</b>\nОтметь, как сегодня.",
+            text=f"⏰ <b>Строка из блокнота</b>\n\n<b>{escape(habit_name_text)}</b>\nЕсли сегодня не день — просто отметь спокойно.",
             parse_mode="HTML",
             reply_markup=keyboard,
         )
