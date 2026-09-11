@@ -55,7 +55,7 @@
       z-index: 4;
       width: min(440px, calc(100% - 40px));
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 8px;
       padding: 12px;
       background: #fff;
@@ -117,6 +117,28 @@
     .stat-bar { height: 8px; overflow: hidden; border-radius: 999px; background: #e9eef7; }
     .stat-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
     .stat-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; color: var(--muted); font-size: 12px; }
+    .calendar-panel { display: grid; gap: 14px; }
+    .calendar-head { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+    .calendar-month { font-weight: 900; font-size: 18px; }
+    .calendar-nav { width: 42px; padding: 0; }
+    .weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .weekdays span { color: var(--muted); font-size: 12px; font-weight: 800; text-align: center; }
+    .day-cell {
+      min-height: 42px;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--text);
+      font-weight: 800;
+      padding: 0;
+    }
+    .day-cell.done { background: var(--accent); color: #fff; }
+    .day-cell.missed { background: rgba(247, 201, 72, .14); border-color: rgba(247, 201, 72, .5); color: #9a6a00; }
+    .day-cell.today { border-color: var(--accent); }
+    .day-cell:disabled { color: #c5cfdd; opacity: 1; }
+    .calendar-legend { display: flex; gap: 12px; color: var(--muted); font-size: 12px; }
+    .legend-dot { width: 9px; height: 9px; display: inline-block; border-radius: 50%; margin-right: 5px; background: var(--accent); }
+    .legend-dot.missed { background: var(--yellow); }
     .primary-card {
       min-height: 140px;
       overflow: hidden;
@@ -229,6 +251,7 @@
 
     <nav class="tabs">
       <button class="active" id="tab-today" type="button">День</button>
+      <button id="tab-calendar" type="button">Календарь</button>
       <button id="tab-sleep" type="button">Сон</button>
       <button id="tab-manage" type="button">Список</button>
     </nav>
@@ -255,6 +278,25 @@
         </div>
         <div class="stats-list" id="habit-stats"></div>
       </section>
+    </section>
+
+    <section id="view-calendar" class="hidden">
+      <div class="panel calendar-panel">
+        <div class="calendar-head">
+          <select id="calendar-habit" aria-label="Привычка"></select>
+          <button class="calendar-nav ghost" id="calendar-prev" type="button">‹</button>
+          <button class="calendar-nav ghost" id="calendar-next" type="button">›</button>
+        </div>
+        <h2 class="calendar-month" id="calendar-month">Календарь</h2>
+        <div class="weekdays">
+          <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+        <div class="calendar-legend">
+          <span><i class="legend-dot"></i>готово</span>
+          <span><i class="legend-dot missed"></i>срыв</span>
+        </div>
+      </div>
     </section>
 
     <section id="view-sleep" class="hidden">
@@ -311,7 +353,17 @@
     tg?.expand();
 
     const initData = tg?.initData || "";
-    const state = { data: null, sleep: null, tab: "today", rename: null, draggingId: null, refreshing: false };
+    const state = {
+      data: null,
+      sleep: null,
+      calendar: null,
+      calendarHabit: null,
+      calendarMonth: null,
+      tab: "today",
+      rename: null,
+      draggingId: null,
+      refreshing: false,
+    };
     const $ = (selector) => document.querySelector(selector);
     const escapeHtml = (value = "") => String(value).replace(/[&<>"']/g, (char) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
@@ -338,7 +390,7 @@
 
     function setTab(tab) {
       state.tab = tab;
-      ["today", "sleep", "manage"].forEach((name) => {
+      ["today", "calendar", "sleep", "manage"].forEach((name) => {
         $(`#view-${name}`).classList.toggle("hidden", name !== tab);
         $(`#tab-${name}`).classList.toggle("active", name === tab);
       });
@@ -370,8 +422,13 @@
       renderToday(data);
       renderNote(data.note || "");
       renderHabitStats(data.habit_stats || []);
+      renderCalendarControls(data);
       renderManage(data);
       renderSleep(state.sleep?.items || []);
+      if (
+        state.tab === "calendar" &&
+        (!state.calendar || state.calendar.month !== state.calendarMonth || String(state.calendar.habit_id) !== String(state.calendarHabit))
+      ) loadCalendar();
     }
 
     function renderNote(note) {
@@ -395,6 +452,55 @@
           </div>
         </article>
       `).join("") : '<div class="empty">Статистика появится после первых отметок.</div>';
+    }
+
+    function monthTitle(value) {
+      const [year, month] = value.split("-").map(Number);
+      return new Date(year, month - 1, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+    }
+
+    function shiftMonth(value, step) {
+      const [year, month] = value.split("-").map(Number);
+      const date = new Date(year, month - 1 + step, 1);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    function selectedCalendarHabit(data) {
+      const habits = data.habits || [];
+      if (!state.calendarHabit && habits.length) {
+        state.calendarHabit = String((habits.find((habit) => habit.is_primary) || habits[0]).id);
+      }
+      return state.calendarHabit;
+    }
+
+    function renderCalendarControls(data) {
+      const habits = data.habits || [];
+      if (!state.calendarMonth) state.calendarMonth = (data.today || new Date().toISOString().slice(0, 10)).slice(0, 7);
+      selectedCalendarHabit(data);
+      $("#calendar-habit").innerHTML = habits.length
+        ? habits.map((habit) => `<option value="${habit.id}" ${String(habit.id) === String(state.calendarHabit) ? "selected" : ""}>${escapeHtml(habit.name)}</option>`).join("")
+        : '<option value="">Нет привычек</option>';
+      $("#calendar-month").textContent = monthTitle(state.calendarMonth);
+      renderCalendar();
+    }
+
+    async function loadCalendar() {
+      if (!state.calendarHabit || !state.calendarMonth) return;
+      state.calendar = await request(`/api/calendar?habit_id=${state.calendarHabit}&month=${state.calendarMonth}`, null, "GET");
+      renderCalendar();
+    }
+
+    function renderCalendar() {
+      const calendar = state.calendar;
+      if (!calendar || calendar.month !== state.calendarMonth || String(calendar.habit_id) !== String(state.calendarHabit)) {
+        $("#calendar-grid").innerHTML = '<div class="empty" style="grid-column:1/-1">Загружаю календарь.</div>';
+        return;
+      }
+      const blanks = Array.from({ length: calendar.first_weekday || 0 }, () => "<span></span>").join("");
+      $("#calendar-grid").innerHTML = blanks + calendar.days.map((day) => {
+        const className = ["day-cell", day.done ? "done" : "", day.missed ? "missed" : "", day.today ? "today" : ""].filter(Boolean).join(" ");
+        return `<button class="${className}" data-date="${day.date}" data-done="${day.done ? "1" : "0"}" type="button" ${day.future ? "disabled" : ""}>${day.day}</button>`;
+      }).join("");
     }
 
     function habitStatus(habit) {
@@ -626,9 +732,42 @@
     }
 
     $("#tab-today").addEventListener("click", () => setTab("today"));
+    $("#tab-calendar").addEventListener("click", () => setTab("calendar"));
     $("#tab-sleep").addEventListener("click", () => setTab("sleep"));
     $("#tab-manage").addEventListener("click", () => setTab("manage"));
     $("#quick-add").addEventListener("click", () => setTab("manage"));
+    $("#calendar-habit").addEventListener("change", async (event) => {
+      state.calendarHabit = event.target.value;
+      state.calendar = null;
+      await loadCalendar();
+    });
+    $("#calendar-prev").addEventListener("click", async () => {
+      state.calendarMonth = shiftMonth(state.calendarMonth, -1);
+      state.calendar = null;
+      $("#calendar-month").textContent = monthTitle(state.calendarMonth);
+      await loadCalendar();
+    });
+    $("#calendar-next").addEventListener("click", async () => {
+      state.calendarMonth = shiftMonth(state.calendarMonth, 1);
+      state.calendar = null;
+      $("#calendar-month").textContent = monthTitle(state.calendarMonth);
+      await loadCalendar();
+    });
+    $("#calendar-grid").addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-date]");
+      if (!button || !state.calendarHabit) return;
+      button.disabled = true;
+      const action = button.dataset.done === "1" ? "undo" : "mark";
+      try {
+        state.data = await request(`/api/habits/${state.calendarHabit}/${action}`, { date: button.dataset.date });
+        state.calendar = null;
+        render();
+        await loadCalendar();
+      } catch (error) {
+        showToast(error.message || "Не удалось обновить дату");
+        await loadCalendar();
+      }
+    });
     $("#daily-note").addEventListener("input", () => {
       $("#note-status").textContent = "пишу";
       clearTimeout(state.noteTimer);

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -17,6 +18,7 @@ from db import (
     get_daily_note,
     get_habit_reminder,
     get_habit_logs,
+    get_habit_misses,
     get_missed_habit_ids,
     get_user_habits,
     get_user_habit_stats,
@@ -123,7 +125,7 @@ async def get_action_date(request: web.Request) -> str:
         raise web.HTTPBadRequest(text="Invalid date") from exc
 
     today = parse_date(today_str())
-    first_available = parse_date(date_range(30)[0])
+    first_available = parse_date(date_range(370)[0])
     if selected > today or selected < first_available:
         raise web.HTTPBadRequest(text="Date is outside the available calendar range")
 
@@ -332,6 +334,57 @@ async def api_stats(request: web.Request) -> web.Response:
     })
 
 
+async def api_calendar(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    user_id = int(user["id"])
+    habits = await get_user_habits(user_id)
+    if not habits:
+        return json_response({"habit_id": None, "month": request.query.get("month") or today_str()[:7], "days": []})
+
+    try:
+        habit_id = int(request.query.get("habit_id") or next((habit[0] for habit in habits if len(habit) > 10 and habit[10]), habits[0][0]))
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(text="Invalid habit_id") from exc
+    if habit_id not in {habit[0] for habit in habits}:
+        raise web.HTTPForbidden(text="Habit does not belong to user")
+
+    month = request.query.get("month") or today_str()[:7]
+    try:
+        month_start = parse_date(f"{month}-01")
+    except ValueError as exc:
+        raise web.HTTPBadRequest(text="Invalid month") from exc
+    next_month = (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
+
+    logs = {date for _, date in await get_habit_logs(user_id, habit_id=habit_id, days=370)}
+    misses = {date for _, date in await get_habit_misses(user_id, habit_id=habit_id, days=370)}
+    today = parse_date(today_str())
+    days = []
+    current = month_start
+    while current < next_month:
+        value = current.strftime("%Y-%m-%d")
+        days.append({
+            "date": value,
+            "day": current.day,
+            "done": value in logs,
+            "missed": value in misses,
+            "today": current == today,
+            "future": current > today,
+        })
+        current += timedelta(days=1)
+
+    return json_response({
+        "habit_id": habit_id,
+        "month": month,
+        "month_label": month_start.strftime("%m.%Y"),
+        "first_weekday": month_start.weekday(),
+        "days": days,
+    })
+
+
 async def api_sleep_stats(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     user_id = int(user["id"])
@@ -415,6 +468,7 @@ def create_web_app() -> web.Application:
     app.router.add_get("/api/state", api_state)
     app.router.add_post("/api/state", api_state)
     app.router.add_post("/api/stats", api_stats)
+    app.router.add_get("/api/calendar", api_calendar)
     app.router.add_post("/api/note/today", api_save_note_today)
     app.router.add_get("/api/sleep/stats", api_sleep_stats)
     app.router.add_post("/api/sleep/today", api_save_sleep_today)
