@@ -11,6 +11,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 
 from bot import bot
 from db import (
+    get_all_users_with_habits,
     get_due_habit_reminders,
     get_missed_habit_ids,
     get_user_habit_stats,
@@ -18,6 +19,7 @@ from db import (
     is_habit_missed,
     mark_habit_completed,
     record_habit_miss,
+    save_sleep_rate,
     today_str,
     unmark_habit_completed,
 )
@@ -25,11 +27,13 @@ from db import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "2026.09.10.2"
+APP_VERSION = "2026.09.14.1"
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 MINI_APP_URL = os.getenv("MINI_APP_URL") or (
     f"https://{RAILWAY_PUBLIC_DOMAIN}/miniapp" if RAILWAY_PUBLIC_DOMAIN else None
 )
+HABIT_TABLE_TIME = os.getenv("HABIT_TABLE_TIME", "21:00")
+SLEEP_RATE_TIME = os.getenv("SLEEP_RATE_TIME", "09:00")
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[[KeyboardButton(text="Блокнот на сегодня")]],
@@ -75,6 +79,29 @@ def today_keyboard(habits, missed_ids: set[int]) -> InlineKeyboardMarkup | None:
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
+def habit_status_icon(habit, missed_ids: set[int]) -> str:
+    if habit[5] == today_str():
+        return "✅"
+    if habit[0] in missed_ids:
+        return "⚪"
+    return "▫️"
+
+
+async def build_habit_table_text(user_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
+    habits = await get_user_habits(user_id)
+    missed_ids = set(await get_missed_habit_ids(user_id))
+    if not habits:
+        return "📓 <b>Блокнот на сегодня</b>\n\nПока пусто. Добавь одну строку в Mini App.", None
+
+    ordered = sorted(habits, key=lambda item: not is_primary_habit(item))
+    lines = ["📓 <b>Таблица привычек на сегодня</b>", ""]
+    for habit in ordered:
+        star = "★ " if is_primary_habit(habit) else ""
+        lines.append(f"{habit_status_icon(habit, missed_ids)} {star}<b>{habit_name(habit)}</b>")
+    lines.append("\n✅ сделано · ⚪ не сегодня · ▫️ ждёт")
+    return "\n".join(lines), today_keyboard(ordered, missed_ids)
+
+
 async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
     if isinstance(obj, types.CallbackQuery):
         await obj.message.edit_text(text, parse_mode="HTML", reply_markup=reply_markup)
@@ -114,6 +141,31 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
         text += "".join(f"\n• <b>{habit_name(habit)}</b>" for habit in completed)
 
     await answer_or_edit(obj, text, today_keyboard(habits, missed_ids))
+
+
+async def send_daily_habit_table():
+    try:
+        for user_id in await get_all_users_with_habits():
+            text, keyboard = await build_habit_table_text(user_id)
+            await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=keyboard)
+    except Exception as error:
+        logger.error("Ошибка send_daily_habit_table: %s", error, exc_info=True)
+
+
+async def ask_sleep_rate():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=str(value), callback_data=f"sleep_rate_{value}")
+        for value in range(1, 6)
+    ]])
+    try:
+        for user_id in await get_all_users_with_habits():
+            await bot.send_message(
+                user_id,
+                "Как спал? Оцени качество сна от 1 до 5.",
+                reply_markup=keyboard,
+            )
+    except Exception as error:
+        logger.error("Ошибка ask_sleep_rate: %s", error, exc_info=True)
 
 
 @router.message(Command("start"))
@@ -199,6 +251,22 @@ async def miss_habit(callback: types.CallbackQuery):
     await record_habit_miss(callback.from_user.id, habit_id)
     await callback.answer("Ок, не сегодня")
     await show_today(callback, callback.from_user.id)
+
+
+@router.callback_query(F.data.startswith("sleep_rate_"))
+async def sleep_rate(callback: types.CallbackQuery):
+    try:
+        rate = int(callback.data.split("_")[-1])
+    except (TypeError, ValueError):
+        await callback.answer("Не понял оценку", show_alert=True)
+        return
+
+    saved = await save_sleep_rate(callback.from_user.id, today_str(), rate)
+    if not saved:
+        await callback.answer("Оценка должна быть от 1 до 5", show_alert=True)
+        return
+    await callback.message.edit_text(f"Сон записал: {rate}/5.")
+    await callback.answer("Записал сон")
 
 
 async def send_habit_reminder_to_user(

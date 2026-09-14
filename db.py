@@ -203,6 +203,16 @@ async def init_db():
                 PRIMARY KEY(user_id, sleep_date)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sleep_rates (
+                user_id INTEGER NOT NULL,
+                sleep_date TEXT NOT NULL,
+                rate INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, sleep_date)
+            )
+        """)
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS daily_notes (
@@ -813,6 +823,30 @@ async def save_sleep_log(user_id: int, sleep_date: str, sleep_out: str, sleep_up
                 rate = excluded.rate,
                 updated_at = excluded.updated_at
         """, (user_id, sleep_date, sleep_out, sleep_up, rate, now, now))
+        await db.execute("""
+            INSERT INTO sleep_rates (user_id, sleep_date, rate, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, sleep_date) DO UPDATE SET
+                rate = excluded.rate,
+                updated_at = excluded.updated_at
+        """, (user_id, sleep_date, rate, now, now))
+        await db.commit()
+        return True
+
+
+async def save_sleep_rate(user_id: int, sleep_date: str, rate: int) -> bool:
+    if not 1 <= rate <= 5:
+        return False
+
+    now = datetime.now().isoformat(timespec="seconds")
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO sleep_rates (user_id, sleep_date, rate, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, sleep_date) DO UPDATE SET
+                rate = excluded.rate,
+                updated_at = excluded.updated_at
+        """, (user_id, sleep_date, rate, now, now))
         await db.commit()
         return True
 
@@ -826,6 +860,12 @@ async def get_sleep_stats(user_id: int, days: int = 7) -> list[dict]:
             WHERE user_id = ? AND sleep_date >= ?
         """, (user_id, dates[0]))
         rows = {row[0]: row for row in await cursor.fetchall()}
+        cursor = await db.execute("""
+            SELECT sleep_date, rate
+            FROM sleep_rates
+            WHERE user_id = ? AND sleep_date >= ?
+        """, (user_id, dates[0]))
+        rates = {row[0]: row[1] for row in await cursor.fetchall()}
 
     weekdays = ["\u041f\u043d", "\u0412\u0442", "\u0421\u0440", "\u0427\u0442", "\u041f\u0442", "\u0421\u0431", "\u0412\u0441"]
     result = []
@@ -838,7 +878,7 @@ async def get_sleep_stats(user_id: int, days: int = 7) -> list[dict]:
             hours = sleep_hours(sleep_out, sleep_up)
         else:
             sleep_out = sleep_up = None
-            rate = 0
+            rate = rates.get(date, 0)
             hours = 0.0
         result.append({
             "date": label,
