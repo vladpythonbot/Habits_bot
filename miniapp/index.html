@@ -215,21 +215,23 @@
     .sleep-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
     .sleep-kpi { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
     .sleep-kpi b { display: block; font-size: 20px; line-height: 1.1; }
+    .sleep-chart-card { display: grid; gap: 12px; }
     .sleep-chart {
-      min-height: 292px;
+      min-height: 320px;
       overflow: hidden;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: #f7f7f4;
+      background: #fbfcff;
     }
-    .sleep-chart svg { display: block; width: 100%; height: 292px; }
-    .grid-line { stroke: rgba(80, 80, 80, .18); stroke-width: 1; }
-    .axis-line { stroke: rgba(50, 50, 50, .45); stroke-width: 1.4; }
-    .sleep-bar-svg { fill: rgba(88, 148, 255, .18); }
-    .quality-line { fill: none; stroke: #008000; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
-    .quality-dot { fill: #8fd0b0; stroke: #008000; stroke-width: 2.5; }
-    .chart-label { fill: #686868; font-size: 14px; font-family: inherit; }
-    .chart-title { fill: #686868; font-size: 15px; font-weight: 700; font-family: inherit; }
+    .sleep-chart svg { display: block; width: 100%; height: 320px; }
+    .grid-line { stroke: rgba(95, 110, 132, .2); stroke-width: 1; }
+    .axis-line { stroke: rgba(58, 72, 94, .6); stroke-width: 1.5; }
+    .sleep-bar-svg { fill: rgba(88, 148, 255, .38); }
+    .quality-line { fill: none; stroke: #118a2c; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
+    .quality-dot { fill: #e9fff0; stroke: #118a2c; stroke-width: 2.5; }
+    .chart-label { fill: #56657a; font-size: 15px; font-weight: 700; font-family: inherit; }
+    .chart-small { fill: #8fa0bb; font-size: 12px; font-weight: 800; font-family: inherit; }
+    .chart-title { fill: #06142c; font-size: 17px; font-weight: 900; font-family: inherit; }
     .toast { position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 10; display: none; place-items: center; }
     .toast span { max-width: 520px; width: 100%; background: #0b0f16; border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; color: var(--text); }
     .toast.show { display: grid; }
@@ -239,7 +241,6 @@
     .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     @media (max-width: 460px) {
       .actions, .habit-actions, .add-form, .reminder-form, .sleep-summary { grid-template-columns: 1fr; }
-      .sleep-chart { gap: 5px; }
     }
   </style>
 </head>
@@ -275,6 +276,13 @@
           <span class="note-status" id="note-status">сохранено</span>
         </div>
         <textarea id="daily-note" maxlength="1200" placeholder="Пара строк для себя: что держать в фокусе, что отпустить, что заметил."></textarea>
+      </section>
+      <section class="panel sleep-chart-card">
+        <div>
+          <h2>График сна за 7 дней</h2>
+          <p class="muted">часы сна и оценка качества</p>
+        </div>
+        <div class="sleep-chart" id="sleep-chart-today"></div>
       </section>
       <section class="panel">
         <div class="note-head">
@@ -327,7 +335,7 @@
           <div class="sleep-kpi"><b id="sleep-avg">-</b><span class="muted">средний сон</span></div>
           <div class="sleep-kpi"><b id="sleep-quality">-</b><span class="muted">качество</span></div>
         </div>
-        <div class="sleep-chart" id="sleep-chart"></div>
+        <div class="sleep-chart" id="sleep-chart-sleep"></div>
       </div>
     </section>
 
@@ -644,16 +652,20 @@
       $("#sleep-quality").textContent = avgRate === "-" ? "-" : `${avgRate}/5`;
 
       const width = 700;
-      const height = 292;
-      const left = 42;
-      const right = 18;
-      const top = 34;
-      const bottom = 66;
+      const height = 320;
+      const left = 48;
+      const right = 46;
+      const top = 58;
+      const bottom = 62;
       const plotWidth = width - left - right;
       const plotHeight = height - top - bottom;
       const x = (index) => left + (items.length < 2 ? plotWidth / 2 : index * plotWidth / (items.length - 1));
       const yRate = (rate) => top + (5 - Math.max(0, Math.min(5, rate))) * plotHeight / 5;
-      const linePoints = items.map((item, index) => `${x(index)},${yRate(Number(item.rate) || 0)}`).join(" ");
+      const yHours = (hours) => height - bottom - Math.max(0, Math.min(12, hours)) * plotHeight / 12;
+      const ratedItems = items
+        .map((item, index) => ({ rate: Number(item.rate) || 0, index }))
+        .filter((item) => item.rate > 0);
+      const linePoints = ratedItems.map((item) => `${x(item.index)},${yRate(item.rate)}`).join(" ");
       const rows = Array.from({ length: 6 }, (_, value) => {
         const y = yRate(value);
         return `<line class="grid-line" x1="${left}" y1="${y}" x2="${width - right}" y2="${y}"></line>
@@ -662,29 +674,37 @@
       const columns = items.map((item, index) => {
         const px = x(index);
         const hours = Math.max(0, Math.min(12, Number(item.hours) || 0));
-        const barHeight = hours / 12 * plotHeight;
+        const barHeight = height - bottom - yHours(hours);
         return `<line class="grid-line" x1="${px}" y1="${top}" x2="${px}" y2="${height - bottom}"></line>
-          <rect class="sleep-bar-svg" x="${px - 11}" y="${height - bottom - barHeight}" width="22" height="${barHeight}" rx="4"></rect>
-          <text class="chart-label" x="${px}" y="${height - 20}" text-anchor="end" transform="rotate(-50 ${px} ${height - 20})">${escapeHtml(item.date)}</text>`;
+          <rect class="sleep-bar-svg" x="${px - 13}" y="${yHours(hours)}" width="26" height="${barHeight}" rx="5"></rect>
+          <text class="chart-label" x="${px}" y="${height - 22}" text-anchor="middle">${escapeHtml(item.date)}</text>`;
       }).join("");
-      const dots = items.map((item, index) => {
-        const rate = Number(item.rate) || 0;
-        return `<circle class="quality-dot" cx="${x(index)}" cy="${yRate(rate)}" r="5"></circle>`;
+      const dots = ratedItems.map((item) => {
+        return `<circle class="quality-dot" cx="${x(item.index)}" cy="${yRate(item.rate)}" r="5.5"></circle>`;
       }).join("");
+      const rightScale = [12, 6, 0].map((value) => (
+        `<text class="chart-small" x="${width - right + 14}" y="${yHours(value) + 4}" text-anchor="start">${value}ч</text>`
+      )).join("");
 
-      $("#sleep-chart").innerHTML = `
+      const svg = `
         <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Качество сна за 7 дней">
-          <rect x="0" y="0" width="${width}" height="${height}" fill="#f7f7f4"></rect>
-          <rect x="282" y="12" width="62" height="24" fill="#008000"></rect>
-          <text class="chart-title" x="354" y="30">Качество сна</text>
+          <rect x="0" y="0" width="${width}" height="${height}" fill="#fbfcff"></rect>
+          <text class="chart-title" x="${left}" y="30">График сна за 7 дней</text>
+          <rect x="${left}" y="40" width="28" height="10" rx="5" fill="rgba(88, 148, 255, .38)"></rect>
+          <text class="chart-small" x="${left + 36}" y="50">часы сна</text>
+          <line x1="${left + 132}" y1="45" x2="${left + 166}" y2="45" stroke="#118a2c" stroke-width="4.5" stroke-linecap="round"></line>
+          <text class="chart-small" x="${left + 176}" y="50">качество 1-5</text>
           ${rows}
+          ${rightScale}
           ${columns}
           <line class="axis-line" x1="${left}" y1="${top}" x2="${left}" y2="${height - bottom}"></line>
           <line class="axis-line" x1="${left}" y1="${height - bottom}" x2="${width - right}" y2="${height - bottom}"></line>
-          <polyline class="quality-line" points="${linePoints}"></polyline>
+          ${linePoints ? `<polyline class="quality-line" points="${linePoints}"></polyline>` : ""}
           ${dots}
         </svg>
       `;
+      $("#sleep-chart-today").innerHTML = svg;
+      $("#sleep-chart-sleep").innerHTML = svg;
       const today = items.at(-1);
       if (today?.sleep_out) $("#sleep-out").value = today.sleep_out;
       if (today?.sleep_up) $("#sleep-up").value = today.sleep_up;
