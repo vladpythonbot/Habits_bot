@@ -55,7 +55,7 @@
       z-index: 4;
       width: min(440px, calc(100% - 40px));
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 8px;
       padding: 12px;
       background: #fff;
@@ -64,6 +64,7 @@
       box-shadow: 0 16px 34px rgba(15, 29, 50, .13);
       transform: translateX(-50%);
     }
+    .tabs button { min-height: 44px; padding: 0 6px; font-size: 12px; }
     button, input, select, textarea {
       min-height: 42px;
       border-radius: 8px;
@@ -195,7 +196,10 @@
     .habit-title { min-width: 0; flex: 1; display: grid; gap: 3px; }
     .habit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .settings { display: grid; gap: 8px; grid-template-columns: 1fr; }
-    .add-form, .reminder-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .add-form, .reminder-form, .settings-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .settings-form { grid-template-columns: 1fr; }
+    .settings-row { display: grid; gap: 6px; }
+    .settings-row label { color: var(--muted); font-size: 13px; font-weight: 800; }
     .quick-add {
       width: 100%;
       margin: 0 0 30px;
@@ -254,6 +258,7 @@
       <button id="tab-calendar" type="button">Календарь</button>
       <button id="tab-sleep" type="button">Сон</button>
       <button id="tab-manage" type="button">Список</button>
+      <button id="tab-settings" type="button">Настройки</button>
     </nav>
 
     <section id="view-today">
@@ -333,6 +338,24 @@
       </form>
       <div class="list" id="habit-list"></div>
     </section>
+
+    <section id="view-settings" class="hidden">
+      <form class="panel settings-form" id="settings-form">
+        <div>
+          <h2>Настройки</h2>
+          <p class="muted">Личное время сообщений в чате.</p>
+        </div>
+        <div class="settings-row">
+          <label for="habit-table-time">Таблица привычек</label>
+          <input id="habit-table-time" type="time" value="21:00">
+        </div>
+        <div class="settings-row">
+          <label for="sleep-rate-time">Оценка сна</label>
+          <input id="sleep-rate-time" type="time" value="09:00">
+        </div>
+        <button class="primary" type="submit">Сохранить</button>
+      </form>
+    </section>
   </main>
 
   <div class="modal hidden" id="rename-modal">
@@ -390,7 +413,7 @@
 
     function setTab(tab) {
       state.tab = tab;
-      ["today", "calendar", "sleep", "manage"].forEach((name) => {
+      ["today", "calendar", "sleep", "manage", "settings"].forEach((name) => {
         $(`#view-${name}`).classList.toggle("hidden", name !== tab);
         $(`#tab-${name}`).classList.toggle("active", name === tab);
       });
@@ -424,6 +447,7 @@
       renderHabitStats(data.habit_stats || []);
       renderCalendarControls(data);
       renderManage(data);
+      renderSettings(data.settings || {});
       renderSleep(state.sleep?.items || []);
       if (
         state.tab === "calendar" &&
@@ -605,6 +629,13 @@
       `).join("") : '<div class="empty">Список пуст.</div>';
     }
 
+    function renderSettings(settings) {
+      const habitTable = $("#habit-table-time");
+      const sleepRate = $("#sleep-rate-time");
+      if (document.activeElement !== habitTable) habitTable.value = settings.habit_table_time || "21:00";
+      if (document.activeElement !== sleepRate) sleepRate.value = settings.sleep_rate_time || "09:00";
+    }
+
     function renderSleep(items) {
       const filled = items.filter((item) => Number(item.hours) > 0);
       const avgHours = filled.length ? (filled.reduce((sum, item) => sum + Number(item.hours || 0), 0) / filled.length).toFixed(1) : "-";
@@ -735,6 +766,7 @@
     $("#tab-calendar").addEventListener("click", () => setTab("calendar"));
     $("#tab-sleep").addEventListener("click", () => setTab("sleep"));
     $("#tab-manage").addEventListener("click", () => setTab("manage"));
+    $("#tab-settings").addEventListener("click", () => setTab("settings"));
     $("#quick-add").addEventListener("click", () => setTab("manage"));
     $("#calendar-habit").addEventListener("change", async (event) => {
       state.calendarHabit = event.target.value;
@@ -795,6 +827,15 @@
       if (!name) return;
       input.value = "";
       await updateAfter(() => request("/api/habits", { name }));
+    });
+
+    $("#settings-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await updateAfter(() => request("/api/settings", {
+        habit_table_time: $("#habit-table-time").value,
+        sleep_rate_time: $("#sleep-rate-time").value,
+      }));
+      showToast("Настройки сохранены");
     });
 
     $("#today-list").addEventListener("click", async (event) => {

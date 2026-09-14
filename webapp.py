@@ -21,6 +21,7 @@ from db import (
     get_habit_logs,
     get_habit_misses,
     get_missed_habit_ids,
+    get_user_settings,
     get_user_habits,
     get_user_habit_stats,
     get_sleep_stats,
@@ -31,6 +32,7 @@ from db import (
     save_habit,
     save_daily_note,
     save_sleep_log,
+    save_user_settings,
     set_primary_habit,
     set_primary_habit_time,
     set_habit_reminder,
@@ -44,6 +46,8 @@ from db import (
 BASE_DIR = Path(__file__).resolve().parent
 WEBAPP_DIR = BASE_DIR / "miniapp"
 MAX_INIT_DATA_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", str(24 * 60 * 60)))
+DEFAULT_HABIT_TABLE_TIME = os.getenv("HABIT_TABLE_TIME", "21:00")
+DEFAULT_SLEEP_RATE_TIME = os.getenv("SLEEP_RATE_TIME", "09:00")
 logger = logging.getLogger(__name__)
 
 
@@ -183,6 +187,7 @@ async def api_state(request: web.Request) -> web.Response:
         "user": {"id": user_id, "first_name": user.get("first_name", "")},
         "today": today_str(),
         "note": await get_daily_note(user_id, today_str()),
+        "settings": await get_user_settings(user_id, DEFAULT_HABIT_TABLE_TIME, DEFAULT_SLEEP_RATE_TIME),
         "habit_stats": habit_stats,
         "summary": {
             "total": len(items),
@@ -240,6 +245,17 @@ async def api_reorder_habits(request: web.Request) -> web.Response:
     saved = await reorder_habits(int(user["id"]), habit_ids)
     if not saved:
         raise web.HTTPBadRequest(text="Invalid habit order")
+    return await api_state(request)
+
+
+async def api_save_settings(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    payload = await get_json_payload(request)
+    habit_table_time = validate_hhmm(str(payload.get("habit_table_time", "")).strip())
+    sleep_rate_time = validate_hhmm(str(payload.get("sleep_rate_time", "")).strip())
+    saved = await save_user_settings(int(user["id"]), habit_table_time, sleep_rate_time)
+    if not saved:
+        raise web.HTTPBadRequest(text="Invalid settings")
     return await api_state(request)
 
 
@@ -476,6 +492,7 @@ def create_web_app() -> web.Application:
     app.router.add_get("/miniapp", index)
     app.router.add_get("/api/state", api_state)
     app.router.add_post("/api/state", api_state)
+    app.router.add_post("/api/settings", api_save_settings)
     app.router.add_post("/api/stats", api_stats)
     app.router.add_get("/api/calendar", api_calendar)
     app.router.add_post("/api/note/today", api_save_note_today)

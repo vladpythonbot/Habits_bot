@@ -9,9 +9,7 @@ from bot import bot, dp
 from db import init_db
 from routers import (
     APP_VERSION,
-    HABIT_TABLE_TIME,
     MINI_APP_URL,
-    SLEEP_RATE_TIME,
     ask_sleep_rate,
     daily_reminder,
     router,
@@ -42,16 +40,6 @@ async def configure_menu_button() -> None:
         logging.warning("Menu button was not configured: %s", error)
 
 
-def parse_hhmm(value: str) -> tuple[int, int]:
-    try:
-        hour, minute = [int(part) for part in value.split(":", 1)]
-    except (AttributeError, ValueError) as exc:
-        raise ValueError(f"Invalid time value: {value}") from exc
-    if not (0 <= hour <= 23 and 0 <= minute <= 59):
-        raise ValueError(f"Invalid time value: {value}")
-    return hour, minute
-
-
 async def main() -> None:
     await init_db()
     logging.info("HabitFlow version: %s", APP_VERSION)
@@ -67,22 +55,18 @@ async def main() -> None:
         max_instances=1,
         coalesce=True,
     )
-    habit_table_hour, habit_table_minute = parse_hhmm(HABIT_TABLE_TIME)
     scheduler.add_job(
         send_daily_habit_table,
-        "cron",
-        hour=habit_table_hour,
-        minute=habit_table_minute,
+        "interval",
+        minutes=1,
         id="daily_habit_table",
         max_instances=1,
         coalesce=True,
     )
-    sleep_rate_hour, sleep_rate_minute = parse_hhmm(SLEEP_RATE_TIME)
     scheduler.add_job(
         ask_sleep_rate,
-        "cron",
-        hour=sleep_rate_hour,
-        minute=sleep_rate_minute,
+        "interval",
+        minutes=1,
         id="sleep_rate_prompt",
         max_instances=1,
         coalesce=True,

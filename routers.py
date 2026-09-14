@@ -12,9 +12,10 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 from bot import bot
 from db import (
     clear_habit_day,
-    get_all_users_with_habits,
     get_due_habit_reminders,
     get_missed_habit_ids,
+    get_users_for_habit_table_time,
+    get_users_for_sleep_rate_time,
     get_user_habit_stats,
     get_user_habits,
     is_habit_missed,
@@ -28,7 +29,7 @@ from db import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "2026.09.14.2"
+APP_VERSION = "2026.09.14.3"
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 MINI_APP_URL = os.getenv("MINI_APP_URL") or (
     f"https://{RAILWAY_PUBLIC_DOMAIN}/miniapp" if RAILWAY_PUBLIC_DOMAIN else None
@@ -145,8 +146,9 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
 
 
 async def send_daily_habit_table():
+    current_time = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%H:%M")
     try:
-        for user_id in await get_all_users_with_habits():
+        for user_id in await get_users_for_habit_table_time(current_time, HABIT_TABLE_TIME):
             text, keyboard = await build_habit_table_text(user_id)
             await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=keyboard)
     except Exception as error:
@@ -154,12 +156,13 @@ async def send_daily_habit_table():
 
 
 async def ask_sleep_rate():
+    current_time = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%H:%M")
     keyboard = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=str(value), callback_data=f"sleep_rate_{value}")
         for value in range(1, 6)
     ]])
     try:
-        for user_id in await get_all_users_with_habits():
+        for user_id in await get_users_for_sleep_rate_time(current_time, SLEEP_RATE_TIME):
             await bot.send_message(
                 user_id,
                 "Как спал? Оцени качество сна от 1 до 5.",
@@ -180,6 +183,7 @@ async def start(message: types.Message, state: FSMContext):
 
 
 @router.message(Command("app"))
+@router.message(Command("settings"))
 async def open_mini_app(message: types.Message, state: FSMContext):
     await state.clear()
     if MINI_APP_URL:
