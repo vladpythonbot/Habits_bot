@@ -8,24 +8,26 @@
   <style>
     :root {
       color-scheme: light;
-      --bg: #f5f7fb;
-      --chrome: #14202b;
+      --bg: #eef2f0;
+      --chrome: #111827;
       --panel: #ffffff;
-      --panel-2: #f7f9fd;
-      --paper: #fffaf0;
-      --line: #dfe6f1;
-      --text: #06142c;
-      --muted: #8fa0bb;
-      --accent: #746fff;
-      --accent-2: #8a86ff;
-      --blue: #5894ff;
-      --yellow: #ffb800;
-      --danger: #e55367;
+      --panel-2: #f7f8f5;
+      --paper: #fff9e8;
+      --line: #d9e1dc;
+      --text: #172033;
+      --muted: #7c8a9d;
+      --accent: #4f46e5;
+      --accent-2: #0f766e;
+      --blue: #3b82f6;
+      --yellow: #e6a700;
+      --danger: #d0445b;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: var(--chrome);
+      background:
+        linear-gradient(180deg, var(--chrome) 0, var(--chrome) 86px, var(--bg) 86px),
+        var(--bg);
       color: var(--text);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       -webkit-tap-highlight-color: transparent;
@@ -34,15 +36,17 @@
       width: min(720px, 100%);
       min-height: 100vh;
       margin: 0 auto;
-      padding: 0 20px 104px;
+      padding: 0 18px 106px;
       background: var(--bg);
     }
     header, .top, .habit-row, .sleep-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     header {
-      margin: 0 -20px 24px;
-      padding: 24px 28px;
+      margin: 0 -18px 22px;
+      padding: 24px 26px 22px;
       background: var(--chrome);
       color: #fff;
+      border-bottom-left-radius: 24px;
+      border-bottom-right-radius: 24px;
     }
     h1, h2, p { margin: 0; letter-spacing: 0; }
     h1 { font-size: 24px; line-height: 1.1; }
@@ -56,37 +60,39 @@
       width: min(440px, calc(100% - 40px));
       display: grid;
       grid-template-columns: repeat(5, 1fr);
-      gap: 8px;
-      padding: 12px;
-      background: #fff;
+      gap: 6px;
+      padding: 10px;
+      background: rgba(255, 255, 255, .96);
       border: 1px solid var(--line);
-      border-radius: 18px;
-      box-shadow: 0 16px 34px rgba(15, 29, 50, .13);
+      border-radius: 20px;
+      box-shadow: 0 18px 42px rgba(18, 27, 41, .16);
       transform: translateX(-50%);
+      backdrop-filter: blur(12px);
     }
-    .tabs button { min-height: 44px; padding: 0 6px; font-size: 12px; }
+    .tabs button { min-height: 44px; padding: 0 5px; font-size: 12px; border: 0; background: transparent; color: var(--muted); }
     button, input, select, textarea {
       min-height: 42px;
-      border-radius: 8px;
+      border-radius: 10px;
       border: 1px solid var(--line);
       font: inherit;
     }
     button { background: var(--panel-2); color: var(--text); font-weight: 700; cursor: pointer; padding: 0 11px; }
-    button.active, button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button.ghost { background: transparent; color: var(--muted); }
-    button.danger { background: transparent; color: var(--danger); }
-    button.done { background: rgba(116, 111, 255, .12); border-color: rgba(116, 111, 255, .4); color: var(--accent); }
-    button.skipped { background: rgba(247, 201, 72, .12); border-color: rgba(247, 201, 72, .45); color: var(--yellow); }
+    button.active { background: #eef2ff; border-color: transparent; color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 8px 18px rgba(79, 70, 229, .2); }
+    button.ghost { background: transparent; color: #6b7a90; }
+    button.danger { background: #fff5f6; border-color: #f2c7cf; color: var(--danger); }
+    button.done { background: #ecfdf5; border-color: #bbf7d0; color: var(--accent-2); }
+    button.skipped { background: #fff7d6; border-color: #f5d472; color: #9a6a00; }
     button:disabled { cursor: default; opacity: .9; }
-    input, select, textarea { width: 100%; min-width: 0; background: var(--panel); color: var(--text); padding: 0 11px; }
+    input, select, textarea { width: 100%; min-width: 0; background: #fff; color: var(--text); padding: 0 11px; }
     textarea { min-height: 118px; padding: 13px 14px; resize: vertical; line-height: 1.45; }
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: 14px;
       padding: 18px;
-      margin-bottom: 10px;
-      box-shadow: 0 10px 24px rgba(15, 29, 50, .08);
+      margin-bottom: 12px;
+      box-shadow: 0 8px 22px rgba(20, 32, 43, .06);
     }
     .hidden { display: none; }
     .list { display: grid; gap: 10px; }
@@ -97,10 +103,10 @@
     .summary h2 { font-size: 30px; }
     .note-card {
       background:
-        linear-gradient(transparent 31px, rgba(222, 195, 130, .2) 32px),
+        linear-gradient(transparent 31px, rgba(210, 178, 98, .18) 32px),
         var(--paper);
       background-size: 100% 32px;
-      border-color: #f0dfb7;
+      border-color: #ecd99d;
     }
     .note-card textarea {
       border: 0;
@@ -114,9 +120,9 @@
     .stats-list { display: grid; gap: 10px; }
     .stat-card { display: grid; gap: 8px; }
     .stat-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-    .stat-percent { color: var(--accent); font-size: 20px; font-weight: 900; }
+    .stat-percent { color: var(--accent-2); font-size: 20px; font-weight: 900; }
     .stat-bar { height: 8px; overflow: hidden; border-radius: 999px; background: #e9eef7; }
-    .stat-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .stat-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent-2); }
     .stat-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; color: var(--muted); font-size: 12px; }
     .calendar-panel { display: grid; gap: 14px; }
     .calendar-head { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
@@ -133,7 +139,7 @@
       font-weight: 800;
       padding: 0;
     }
-    .day-cell.done { background: var(--accent); color: #fff; }
+    .day-cell.done { background: var(--accent-2); color: #fff; }
     .day-cell.missed { background: rgba(247, 201, 72, .14); border-color: rgba(247, 201, 72, .5); color: #9a6a00; }
     .day-cell.today { border-color: var(--accent); }
     .day-cell:disabled { color: #c5cfdd; opacity: 1; }
@@ -145,10 +151,10 @@
       overflow: hidden;
       position: relative;
       color: #fff;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      background: #4f46e5;
       border: 0;
-      border-radius: 20px;
-      box-shadow: 0 18px 34px rgba(116, 111, 255, .28);
+      border-radius: 18px;
+      box-shadow: 0 16px 34px rgba(79, 70, 229, .24);
     }
     .primary-card::after {
       content: "☆";
@@ -185,7 +191,7 @@
       display: grid;
       place-items: center;
       border-radius: 8px;
-      background: var(--panel-2);
+      background: #eef2f7;
       color: var(--muted);
       touch-action: none;
       cursor: grab;
@@ -203,25 +209,26 @@
     .quick-add {
       width: 100%;
       margin: 0 0 30px;
-      border: 1px dashed #d8e1ef;
-      background: transparent;
+      border: 1px dashed #cbd7d2;
+      background: rgba(255, 255, 255, .42);
       color: var(--muted);
       font-size: 16px;
     }
-    .sleep-panel { background: var(--panel); }
+    .sleep-panel, .sleep-chart-card { background: #101827; border-color: #1d2a3d; color: #f8fafc; }
+    .sleep-panel .muted, .sleep-chart-card .muted { color: #93a4bb; }
     .sleep-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
     .sleep-rate { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; grid-column: 1 / -1; }
     .sleep-rate button.selected { background: var(--yellow); border-color: var(--yellow); color: #1c1602; }
     .sleep-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
-    .sleep-kpi { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+    .sleep-kpi { background: #162237; border: 1px solid #26364f; border-radius: 10px; padding: 10px; }
     .sleep-kpi b { display: block; font-size: 20px; line-height: 1.1; }
     .sleep-chart-card { display: grid; gap: 12px; }
     .sleep-chart {
       min-height: 320px;
       overflow: hidden;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fbfcff;
+      border: 1px solid #26364f;
+      border-radius: 10px;
+      background: #0b1220;
     }
     .sleep-chart svg { display: block; width: 100%; height: 320px; }
     .grid-line { stroke: rgba(95, 110, 132, .2); stroke-width: 1; }
@@ -229,11 +236,11 @@
     .sleep-bar-svg { fill: rgba(88, 148, 255, .38); }
     .quality-line { fill: none; stroke: #118a2c; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
     .quality-dot { fill: #e9fff0; stroke: #118a2c; stroke-width: 2.5; }
-    .chart-label { fill: #56657a; font-size: 15px; font-weight: 700; font-family: inherit; }
+    .chart-label { fill: #cbd5e1; font-size: 15px; font-weight: 700; font-family: inherit; }
     .chart-small { fill: #8fa0bb; font-size: 12px; font-weight: 800; font-family: inherit; }
-    .chart-title { fill: #06142c; font-size: 17px; font-weight: 900; font-family: inherit; }
+    .chart-title { fill: #f8fafc; font-size: 17px; font-weight: 900; font-family: inherit; }
     .toast { position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 10; display: none; place-items: center; }
-    .toast span { max-width: 520px; width: 100%; background: #0b0f16; border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; color: var(--text); }
+    .toast span { max-width: 520px; width: 100%; background: #111827; border: 1px solid #26364f; border-radius: 10px; padding: 11px 12px; color: #fff; }
     .toast.show { display: grid; }
     .modal { position: fixed; inset: 0; z-index: 5; display: grid; place-items: end center; padding: 14px 12px; background: rgba(0,0,0,.48); }
     .modal.hidden { display: none; }
@@ -256,10 +263,10 @@
 
     <nav class="tabs">
       <button class="active" id="tab-today" type="button">День</button>
-      <button id="tab-calendar" type="button">Календарь</button>
+      <button id="tab-calendar" type="button">Кален.</button>
       <button id="tab-sleep" type="button">Сон</button>
       <button id="tab-manage" type="button">Список</button>
-      <button id="tab-settings" type="button">Настройки</button>
+      <button id="tab-settings" type="button">Настр.</button>
     </nav>
 
     <section id="view-today">
