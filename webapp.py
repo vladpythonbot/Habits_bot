@@ -12,6 +12,7 @@ from aiohttp import web
 
 from bot import TOKEN
 from db import (
+    clear_habit_day,
     date_range,
     delete_habit_from_db,
     disable_habit_reminder,
@@ -450,6 +451,14 @@ async def api_undo(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
+async def api_clear_day(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    habit_id = int(request.match_info["habit_id"])
+    action_date = await get_action_date(request)
+    await clear_habit_day(int(user["id"]), habit_id, action_date)
+    return await api_state(request)
+
+
 @web.middleware
 async def error_middleware(request: web.Request, handler):
     try:
@@ -484,6 +493,7 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits/{habit_id:\\d+}/mark", api_mark)
     app.router.add_post("/api/habits/{habit_id:\\d+}/miss", api_miss)
     app.router.add_post("/api/habits/{habit_id:\\d+}/undo", api_undo)
+    app.router.add_post("/api/habits/{habit_id:\\d+}/clear", api_clear_day)
     app.router.add_static("/static", WEBAPP_DIR, show_index=False)
     return app
 

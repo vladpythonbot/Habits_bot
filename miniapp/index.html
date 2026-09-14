@@ -513,14 +513,14 @@
       if (habit.done_today) {
         return `
           <button class="done" type="button" disabled>Выполнено</button>
-          <button class="ghost" data-action="undo" data-id="${habit.id}" type="button">Отменить</button>
+          <button class="ghost" data-action="clear" data-id="${habit.id}" type="button">Очистить</button>
         `;
       }
       if (habit.missed_today) {
         return `
           <button class="skipped" type="button" disabled>Не сегодня</button>
           <button class="primary" data-action="mark" data-id="${habit.id}" type="button">Выполнить</button>
-          <button class="ghost" data-action="undo" data-id="${habit.id}" type="button">Вернуть</button>
+          <button class="ghost" data-action="clear" data-id="${habit.id}" type="button">Очистить</button>
         `;
       }
       return `

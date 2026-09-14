@@ -568,6 +568,48 @@ async def unmark_habit_completed(user_id: int, habit_id: int, completed_date: st
     return True, {"habit_name": habit_name}
 
 
+async def clear_habit_day(user_id: int, habit_id: int, action_date: str | None = None):
+    action_date = action_date or today_str()
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT habit_name, goal_type
+            FROM habits
+            WHERE id = ? AND user_id = ? AND archived_at IS NULL
+        """, (habit_id, user_id))
+        row = await cursor.fetchone()
+        if not row:
+            return False, None
+
+        habit_name, goal_type = row
+        await db.execute("""
+            DELETE FROM habit_misses
+            WHERE user_id = ? AND habit_id = ? AND missed_date = ?
+        """, (user_id, habit_id, action_date))
+        await db.execute("""
+            DELETE FROM habit_logs
+            WHERE user_id = ? AND habit_id = ? AND completed_date = ?
+        """, (user_id, habit_id, action_date))
+        cursor = await db.execute("""
+            SELECT completed_date
+            FROM habit_logs
+            WHERE user_id = ? AND habit_id = ?
+            ORDER BY completed_date DESC
+        """, (user_id, habit_id))
+        completed_dates = [item[0] for item in await cursor.fetchall()]
+        last_completed_date, streak, total_completed = recalculate_progress(completed_dates, goal_type)
+        await db.execute("""
+            UPDATE habits
+            SET last_completed_date = ?,
+                streak = ?,
+                total_completed = ?
+            WHERE id = ? AND user_id = ?
+        """, (last_completed_date, streak, total_completed, habit_id, user_id))
+        await db.commit()
+
+    return True, {"habit_name": habit_name}
+
+
 async def update_habit_name(user_id: int, habit_id: int, new_name: str):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""

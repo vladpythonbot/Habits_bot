@@ -11,6 +11,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardBu
 
 from bot import bot
 from db import (
+    clear_habit_day,
     get_all_users_with_habits,
     get_due_habit_reminders,
     get_missed_habit_ids,
@@ -27,7 +28,7 @@ from db import (
 router = Router()
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "2026.09.14.1"
+APP_VERSION = "2026.09.14.2"
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 MINI_APP_URL = os.getenv("MINI_APP_URL") or (
     f"https://{RAILWAY_PUBLIC_DOMAIN}/miniapp" if RAILWAY_PUBLIC_DOMAIN else None
@@ -69,9 +70,9 @@ def today_keyboard(habits, missed_ids: set[int]) -> InlineKeyboardMarkup | None:
     today = today_str()
     for habit in sorted(habits, key=lambda item: not is_primary_habit(item)):
         habit_id = habit[0]
-        if habit[5] == today:
-            rows.append([InlineKeyboardButton(text=f"↩️ {habit[1][:22]}", callback_data=f"undo_{habit_id}")])
-        elif habit_id not in missed_ids:
+        if habit[5] == today or habit_id in missed_ids:
+            rows.append([InlineKeyboardButton(text=f"Очистить {habit[1][:18]}", callback_data=f"clear_{habit_id}")])
+        else:
             rows.append([
                 InlineKeyboardButton(text=f"✅ {habit[1][:18]}", callback_data=f"mark_{habit_id}"),
                 InlineKeyboardButton(text="⚪", callback_data=f"miss_{habit_id}"),
@@ -242,6 +243,17 @@ async def undo_habit(callback: types.CallbackQuery):
         await callback.answer("Этой отметки уже нет", show_alert=True)
         return
     await callback.answer(f"Убрал: {info['habit_name']}")
+    await show_today(callback, callback.from_user.id)
+
+
+@router.callback_query(F.data.startswith("clear_"))
+async def clear_habit(callback: types.CallbackQuery):
+    habit_id = int(callback.data.split("_")[-1])
+    success, info = await clear_habit_day(callback.from_user.id, habit_id)
+    if not success:
+        await callback.answer("Не смог очистить", show_alert=True)
+        return
+    await callback.answer(f"Очистил: {info['habit_name']}")
     await show_today(callback, callback.from_user.id)
 
 
