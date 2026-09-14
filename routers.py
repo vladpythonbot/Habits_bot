@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
 from bot import bot
 from db import (
@@ -16,6 +16,7 @@ from db import (
     get_missed_habit_ids,
     get_users_for_habit_table_time,
     get_users_for_sleep_rate_time,
+    get_sleep_stats,
     get_user_habit_stats,
     get_user_habits,
     is_habit_missed,
@@ -25,11 +26,12 @@ from db import (
     today_str,
     unmark_habit_completed,
 )
+from sleep_chart import build_sleep_chart_png, sleep_caption, sleep_summary
 
 router = Router()
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "2026.09.14.3"
+APP_VERSION = "2026.09.14.4"
 RAILWAY_PUBLIC_DOMAIN = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 MINI_APP_URL = os.getenv("MINI_APP_URL") or (
     f"https://{RAILWAY_PUBLIC_DOMAIN}/miniapp" if RAILWAY_PUBLIC_DOMAIN else None
@@ -38,7 +40,10 @@ HABIT_TABLE_TIME = os.getenv("HABIT_TABLE_TIME", "21:00")
 SLEEP_RATE_TIME = os.getenv("SLEEP_RATE_TIME", "09:00")
 
 main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="Блокнот на сегодня")]],
+    keyboard=[
+        [KeyboardButton(text="Блокнот на сегодня")],
+        [KeyboardButton(text="📊 Статистика")],
+    ],
     resize_keyboard=True,
     one_time_keyboard=False,
     is_persistent=True,
@@ -145,6 +150,23 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     await answer_or_edit(obj, text, today_keyboard(habits, missed_ids))
 
 
+async def send_sleep_statistics(message: types.Message) -> None:
+    items = await get_sleep_stats(message.from_user.id, days=7)
+    summary = sleep_summary(items)
+    caption = sleep_caption(items)
+    if summary.recorded_days == 0 and summary.avg_rate is None:
+        await message.answer(caption, parse_mode="HTML", reply_markup=main_keyboard)
+        return
+
+    image = build_sleep_chart_png(items)
+    await message.answer_photo(
+        BufferedInputFile(image, filename="sleep-week.png"),
+        caption=caption,
+        parse_mode="HTML",
+        reply_markup=main_keyboard,
+    )
+
+
 async def send_daily_habit_table():
     current_time = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%H:%M")
     try:
@@ -193,6 +215,7 @@ async def open_mini_app(message: types.Message, state: FSMContext):
 
 
 @router.message(Command("stats"))
+@router.message(F.text == "📊 Статистика")
 async def statistics(message: types.Message, state: FSMContext):
     await state.clear()
     habits = await get_user_habits(message.from_user.id)
@@ -219,6 +242,7 @@ async def statistics(message: types.Message, state: FSMContext):
                 f" · серия {item['streak']}"
             )
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
+    await send_sleep_statistics(message)
 
 
 @router.message(Command("today"))
