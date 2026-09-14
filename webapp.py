@@ -29,6 +29,8 @@ from db import (
     parse_date,
     record_habit_miss,
     reorder_habits,
+    reset_habit_stats,
+    reset_sleep_stats,
     save_habit,
     save_daily_note,
     save_sleep_log,
@@ -441,6 +443,12 @@ async def api_save_sleep_today(request: web.Request) -> web.Response:
     return await api_sleep_stats(request)
 
 
+async def api_reset_sleep(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    await reset_sleep_stats(int(user["id"]))
+    return await api_sleep_stats(request)
+
+
 async def api_mark(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     habit_id = int(request.match_info["habit_id"])
@@ -475,6 +483,15 @@ async def api_clear_day(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
+async def api_reset_habit_stats(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    habit_id = int(request.match_info["habit_id"])
+    reset = await reset_habit_stats(int(user["id"]), habit_id)
+    if not reset:
+        raise web.HTTPNotFound(text="Habit not found")
+    return await api_state(request)
+
+
 @web.middleware
 async def error_middleware(request: web.Request, handler):
     try:
@@ -498,6 +515,7 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/note/today", api_save_note_today)
     app.router.add_get("/api/sleep/stats", api_sleep_stats)
     app.router.add_post("/api/sleep/today", api_save_sleep_today)
+    app.router.add_post("/api/sleep/reset", api_reset_sleep)
     app.router.add_post("/api/habits", api_add_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/rename", api_rename_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/delete", api_delete_habit)
@@ -507,6 +525,7 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits/{habit_id:\\d+}/goal", api_set_goal)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder", api_set_reminder)
     app.router.add_post("/api/habits/{habit_id:\\d+}/reminder/off", api_disable_reminder)
+    app.router.add_post("/api/habits/{habit_id:\\d+}/stats/reset", api_reset_habit_stats)
     app.router.add_post("/api/habits/{habit_id:\\d+}/mark", api_mark)
     app.router.add_post("/api/habits/{habit_id:\\d+}/miss", api_miss)
     app.router.add_post("/api/habits/{habit_id:\\d+}/undo", api_undo)

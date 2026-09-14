@@ -626,6 +626,30 @@ async def clear_habit_day(user_id: int, habit_id: int, action_date: str | None =
     return True, {"habit_name": habit_name}
 
 
+async def reset_habit_stats(user_id: int, habit_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT 1
+            FROM habits
+            WHERE id = ? AND user_id = ? AND archived_at IS NULL
+        """, (habit_id, user_id))
+        if not await cursor.fetchone():
+            return False
+
+        await db.execute("DELETE FROM habit_logs WHERE user_id = ? AND habit_id = ?", (user_id, habit_id))
+        await db.execute("DELETE FROM habit_misses WHERE user_id = ? AND habit_id = ?", (user_id, habit_id))
+        await db.execute("""
+            UPDATE habits
+            SET last_completed_date = NULL,
+                streak = 0,
+                total_completed = 0,
+                reset_date = ?
+            WHERE id = ? AND user_id = ? AND archived_at IS NULL
+        """, (today_str(), habit_id, user_id))
+        await db.commit()
+        return True
+
+
 async def update_habit_name(user_id: int, habit_id: int, new_name: str):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
@@ -905,6 +929,14 @@ async def save_sleep_rate(user_id: int, sleep_date: str, rate: int) -> bool:
                 rate = excluded.rate,
                 updated_at = excluded.updated_at
         """, (user_id, sleep_date, rate, now, now))
+        await db.commit()
+        return True
+
+
+async def reset_sleep_stats(user_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM sleep_logs WHERE user_id = ?", (user_id,))
+        await db.execute("DELETE FROM sleep_rates WHERE user_id = ?", (user_id,))
         await db.commit()
         return True
 

@@ -194,7 +194,7 @@
       line-height: 1;
     }
     .habit-title { min-width: 0; flex: 1; display: grid; gap: 3px; }
-    .habit-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .habit-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
     .settings { display: grid; gap: 8px; grid-template-columns: 1fr; }
     .add-form, .reminder-form, .settings-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
     .settings-form { grid-template-columns: 1fr; }
@@ -335,6 +335,7 @@
           <div class="sleep-kpi"><b id="sleep-avg">-</b><span class="muted">средний сон</span></div>
           <div class="sleep-kpi"><b id="sleep-quality">-</b><span class="muted">качество</span></div>
         </div>
+        <button class="danger" id="sleep-reset" type="button">Очистить статистику сна</button>
         <div class="sleep-chart" id="sleep-chart-sleep"></div>
       </div>
     </section>
@@ -623,6 +624,7 @@
           </div>
           <div class="habit-actions">
             <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}" type="button">Название</button>
+            <button class="ghost" data-action="reset-stats" data-id="${habit.id}" type="button">Очистить статистику</button>
             <button class="danger" data-action="delete" data-id="${habit.id}" type="button">Удалить</button>
           </div>
           <div class="settings">
@@ -900,8 +902,20 @@
         return;
       }
       if (action === "delete" && !confirm("Удалить привычку?")) return;
+      if (action === "reset-stats" && !confirm("Очистить статистику этой привычки? Сама привычка останется.")) return;
       if (action === "delete") await updateAfter(() => request(`/api/habits/${id}/delete`));
+      if (action === "reset-stats") {
+        await updateAfter(() => request(`/api/habits/${id}/stats/reset`));
+        showToast("Статистика привычки очищена");
+      }
       if (action === "reminder-off") await updateAfter(() => request(`/api/habits/${id}/reminder/off`));
+    });
+
+    $("#sleep-reset").addEventListener("click", async () => {
+      if (!confirm("Очистить всю статистику сна?")) return;
+      state.sleep = await request("/api/sleep/reset");
+      renderSleep(state.sleep.items || []);
+      showToast("Статистика сна очищена");
     });
 
     $("#sleep-rate").addEventListener("click", async (event) => {
