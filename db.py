@@ -650,6 +650,31 @@ async def reset_habit_stats(user_id: int, habit_id: int) -> bool:
         return True
 
 
+async def reset_all_habit_stats(user_id: int) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        cursor = await db.execute("""
+            SELECT 1
+            FROM habits
+            WHERE user_id = ? AND archived_at IS NULL
+            LIMIT 1
+        """, (user_id,))
+        if not await cursor.fetchone():
+            return False
+
+        await db.execute("DELETE FROM habit_logs WHERE user_id = ?", (user_id,))
+        await db.execute("DELETE FROM habit_misses WHERE user_id = ?", (user_id,))
+        await db.execute("""
+            UPDATE habits
+            SET last_completed_date = NULL,
+                streak = 0,
+                total_completed = 0,
+                reset_date = ?
+            WHERE user_id = ? AND archived_at IS NULL
+        """, (today_str(), user_id))
+        await db.commit()
+        return True
+
+
 async def update_habit_name(user_id: int, habit_id: int, new_name: str):
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""

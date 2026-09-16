@@ -200,7 +200,7 @@
       line-height: 1;
     }
     .habit-title { min-width: 0; flex: 1; display: grid; gap: 3px; }
-    .habit-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .habit-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .settings { display: grid; gap: 8px; grid-template-columns: 1fr; }
     .add-form, .reminder-form, .settings-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
     .settings-form { grid-template-columns: 1fr; }
@@ -214,6 +214,7 @@
       color: var(--muted);
       font-size: 16px;
     }
+    #habits-reset { width: 100%; margin: 0 0 12px; }
     .sleep-panel, .sleep-chart-card { background: #101827; border-color: #1d2a3d; color: #f8fafc; }
     .sleep-panel .muted, .sleep-chart-card .muted { color: #93a4bb; }
     .sleep-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
@@ -352,6 +353,7 @@
         <input id="habit-name" maxlength="80" placeholder="Новая строка в блокноте" autocomplete="off">
         <button class="primary" type="submit">Добавить</button>
       </form>
+      <button class="danger" id="habits-reset" type="button">Очистить статистику привычек</button>
       <div class="list" id="habit-list"></div>
     </section>
 
@@ -631,7 +633,6 @@
           </div>
           <div class="habit-actions">
             <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}" type="button">Название</button>
-            <button class="ghost" data-action="reset-stats" data-id="${habit.id}" type="button">Очистить статистику</button>
             <button class="danger" data-action="delete" data-id="${habit.id}" type="button">Удалить</button>
           </div>
           <div class="settings">
@@ -909,13 +910,14 @@
         return;
       }
       if (action === "delete" && !confirm("Удалить привычку?")) return;
-      if (action === "reset-stats" && !confirm("Очистить статистику этой привычки? Сама привычка останется.")) return;
       if (action === "delete") await updateAfter(() => request(`/api/habits/${id}/delete`));
-      if (action === "reset-stats") {
-        await updateAfter(() => request(`/api/habits/${id}/stats/reset`));
-        showToast("Статистика привычки очищена");
-      }
       if (action === "reminder-off") await updateAfter(() => request(`/api/habits/${id}/reminder/off`));
+    });
+
+    $("#habits-reset").addEventListener("click", async () => {
+      if (!confirm("Очистить статистику всех привычек? Сами привычки останутся.")) return;
+      await updateAfter(() => request("/api/habits/stats/reset"));
+      showToast("Статистика привычек очищена");
     });
 
     $("#sleep-reset").addEventListener("click", async () => {

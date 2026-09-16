@@ -29,6 +29,7 @@ from db import (
     parse_date,
     record_habit_miss,
     reorder_habits,
+    reset_all_habit_stats,
     reset_habit_stats,
     reset_sleep_stats,
     save_habit,
@@ -492,6 +493,12 @@ async def api_reset_habit_stats(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
+async def api_reset_all_habit_stats(request: web.Request) -> web.Response:
+    user = await get_telegram_user(request)
+    await reset_all_habit_stats(int(user["id"]))
+    return await api_state(request)
+
+
 @web.middleware
 async def error_middleware(request: web.Request, handler):
     try:
@@ -517,6 +524,7 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/sleep/today", api_save_sleep_today)
     app.router.add_post("/api/sleep/reset", api_reset_sleep)
     app.router.add_post("/api/habits", api_add_habit)
+    app.router.add_post("/api/habits/stats/reset", api_reset_all_habit_stats)
     app.router.add_post("/api/habits/{habit_id:\\d+}/rename", api_rename_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/delete", api_delete_habit)
     app.router.add_post("/api/habits/reorder", api_reorder_habits)
