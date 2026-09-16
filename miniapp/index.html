@@ -810,7 +810,10 @@
         },
         body: JSON.stringify({ _auth: initData, ...payload }),
       });
-      if (!response.ok) throw new Error(await response.text());
+      if (!response.ok) {
+        const message = (await response.text()).trim() || `HTTP ${response.status}`;
+        throw new Error(message);
+      }
       return response.json();
     }
 
@@ -821,6 +824,15 @@
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#039;");
+    }
+
+    function authErrorText(error) {
+      const raw = String(error?.message || "").trim();
+      if (!initData) return "Telegram не передал данные входа. Открой Mini App из кнопки бота.";
+      if (raw.includes("expired")) return "Сессия Telegram устарела. Закрой Mini App и открой заново из бота.";
+      if (raw.includes("invalid")) return "Telegram-вход не совпал с токеном бота на сервере. Проверь BOT_TOKEN в Railway.";
+      if (raw.includes("missing") || raw.includes("required")) return "Telegram не передал данные входа. Открой Mini App из кнопки бота.";
+      return `Не удалось проверить вход Telegram: ${escapeHtml(raw || "неизвестная ошибка")}`;
     }
 
     function setTab(tab) {
@@ -1072,7 +1084,13 @@
       try {
         await refreshAll();
       } catch (error) {
-        const details = initData ? "Не удалось проверить вход Telegram." : "Telegram не передал данные входа.";
+        const details = authErrorText(error);
+        document.querySelector("#rate").textContent = "—";
+        document.querySelector("#summary-title").textContent = "Данные не загружены";
+        document.querySelector("#summary-copy").textContent = details;
+        document.querySelector("#today-score").textContent = "—";
+        document.querySelector("#week-score").textContent = "—";
+        document.querySelector("#today-left").textContent = "ошибка входа";
         todayList.innerHTML = `<div class="error">${details}</div>`;
         statsView.innerHTML = `<div class="error">${details}</div>`;
         list.innerHTML = `<div class="error">${details}</div>`;
