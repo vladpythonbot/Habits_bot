@@ -276,6 +276,56 @@
       background: var(--mint);
     }
 
+    .month-summary {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .month-total {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .month-total b {
+      color: var(--mint);
+      font-size: 38px;
+      line-height: 1;
+    }
+
+    .month-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .month-row {
+      display: grid;
+      gap: 9px;
+      padding: 12px;
+    }
+
+    .month-row-top {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .month-row-name {
+      min-width: 0;
+      font-weight: 800;
+      overflow-wrap: anywhere;
+    }
+
+    .month-row-percent {
+      color: var(--mint);
+      font-size: 19px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
     .form-panel {
       display: grid;
       gap: 10px;
@@ -467,6 +517,7 @@
 
     <nav class="tabs">
       <button class="active" id="today-tab" type="button">Сегодня</button>
+      <button class="secondary" id="month-tab" type="button">Месяц</button>
       <button class="secondary" id="manage-tab" type="button">Управление</button>
     </nav>
 
@@ -488,6 +539,25 @@
         <span class="muted" id="today-left">0 осталось</span>
       </div>
       <div class="today-list" id="today-list"></div>
+    </section>
+
+    <section id="month-view" class="hidden">
+      <div class="panel month-summary">
+        <div class="month-total">
+          <div>
+            <h2>Месяц</h2>
+            <p class="muted" id="month-copy">Выполнение за 30 дней</p>
+          </div>
+          <b id="month-percent">0%</b>
+        </div>
+        <div class="rate-track"><div class="rate-fill" id="month-fill" style="--width:0%"></div></div>
+      </div>
+
+      <div class="section-head">
+        <h2>По привычкам</h2>
+        <span class="muted">30 дней</span>
+      </div>
+      <div class="month-list" id="month-list"></div>
     </section>
 
     <section id="manage-view" class="hidden">
@@ -538,10 +608,13 @@
     const state = { data: null, stats: null, tab: "today" };
 
     const todayTab = document.querySelector("#today-tab");
+    const monthTab = document.querySelector("#month-tab");
     const manageTab = document.querySelector("#manage-tab");
     const todayView = document.querySelector("#today-view");
+    const monthView = document.querySelector("#month-view");
     const manageView = document.querySelector("#manage-view");
     const todayList = document.querySelector("#today-list");
+    const monthList = document.querySelector("#month-list");
     const list = document.querySelector("#list");
     const form = document.querySelector("#add-form");
     const input = document.querySelector("#habit-name");
@@ -588,11 +661,15 @@
     function setTab(tab) {
       state.tab = tab;
       const today = tab === "today";
+      const month = tab === "month";
       const manage = tab === "manage";
       todayView.classList.toggle("hidden", !today);
+      monthView.classList.toggle("hidden", !month);
       manageView.classList.toggle("hidden", !manage);
       todayTab.classList.toggle("active", today);
       todayTab.classList.toggle("secondary", !today);
+      monthTab.classList.toggle("active", month);
+      monthTab.classList.toggle("secondary", !month);
       manageTab.classList.toggle("active", manage);
       manageTab.classList.toggle("secondary", !manage);
     }
@@ -686,6 +763,7 @@
       state.data = data;
       state.stats = normalizedStats;
       renderToday(data, normalizedStats);
+      renderMonth(normalizedStats);
       renderManage(data);
     }
 
@@ -718,6 +796,35 @@
           </article>
         `;
       }).join("");
+    }
+
+    function renderMonth(stats) {
+      const rows = stats.habit_rows || [];
+      const totalPercent = Math.max(0, Math.min(100, Number(stats.completion_rate || 0)));
+      const totalDone = rows.reduce((sum, habit) => sum + Number(habit.period_completed || 0), 0);
+      const totalPlan = rows.reduce((sum, habit) => sum + Number(habit.possible || 0), 0);
+
+      document.querySelector("#month-percent").textContent = `${totalPercent}%`;
+      document.querySelector("#month-fill").style.setProperty("--width", `${totalPercent}%`);
+      document.querySelector("#month-copy").textContent = totalPlan
+        ? `${totalDone}/${totalPlan} выполнено по плану`
+        : "Пока нет плана на месяц";
+
+      monthList.innerHTML = rows.length ? rows.map((habit) => {
+        const percent = Math.max(0, Math.min(100, Number(habit.completion_rate || 0)));
+        const done = Number(habit.period_completed || 0);
+        const plan = Number(habit.possible || 0);
+        return `
+          <article class="panel month-row">
+            <div class="month-row-top">
+              <span class="month-row-name">${escapeHtml(habit.name)}</span>
+              <span class="month-row-percent">${percent}%</span>
+            </div>
+            <div class="rate-track"><div class="rate-fill" style="--width:${percent}%"></div></div>
+            <p class="muted">${done}/${plan} за 30 дней · серия ${habit.streak || 0}</p>
+          </article>
+        `;
+      }).join("") : '<div class="empty">Статистика появится после первых отметок.</div>';
     }
 
     function renderManage(data) {
@@ -771,11 +878,13 @@
         document.querySelector("#week-score").textContent = "—";
         document.querySelector("#today-left").textContent = "ошибка входа";
         todayList.innerHTML = `<div class="error">${details}</div>`;
+        monthList.innerHTML = `<div class="error">${details}</div>`;
         list.innerHTML = `<div class="error">${details}</div>`;
       }
     }
 
     todayTab.addEventListener("click", () => setTab("today"));
+    monthTab.addEventListener("click", () => setTab("month"));
     manageTab.addEventListener("click", () => setTab("manage"));
 
     form.addEventListener("submit", async (event) => {
@@ -784,8 +893,9 @@
       if (!name) return;
       input.value = "";
       state.data = await request("/api/habits", { name });
-      state.stats = await request("/api/stats");
+      state.stats = normalizeStats(await request("/api/stats"));
       renderToday(state.data, state.stats);
+      renderMonth(state.stats);
       renderManage(state.data);
     });
 
@@ -796,8 +906,9 @@
       const reminder = reminderForm.elements.reminder.value.trim();
       if (!reminder) return;
       state.data = await request(`/api/habits/${reminderForm.dataset.id}/reminder`, { reminder_time: reminder });
-      state.stats = await request("/api/stats");
+      state.stats = normalizeStats(await request("/api/stats"));
       renderToday(state.data, state.stats);
+      renderMonth(state.stats);
       renderManage(state.data);
     });
 
@@ -805,8 +916,9 @@
       const select = event.target.closest('select[data-action="goal"]');
       if (!select) return;
       state.data = await request(`/api/habits/${select.dataset.id}/goal`, goalPayload(select.value));
-      state.stats = await request("/api/stats");
+      state.stats = normalizeStats(await request("/api/stats"));
       renderToday(state.data, state.stats);
+      renderMonth(state.stats);
       renderManage(state.data);
     });
 
@@ -834,8 +946,9 @@
         return;
       }
 
-      state.stats = await request("/api/stats");
+      state.stats = normalizeStats(await request("/api/stats"));
       renderToday(state.data, state.stats);
+      renderMonth(state.stats);
       renderManage(state.data);
     });
 
@@ -854,8 +967,9 @@
       deleteConfirm.disabled = true;
       try {
         state.data = await request(`/api/habits/${id}/delete`);
-        state.stats = await request("/api/stats");
+        state.stats = normalizeStats(await request("/api/stats"));
         renderToday(state.data, state.stats);
+        renderMonth(state.stats);
         renderManage(state.data);
         closeDeleteModal();
       } finally {
