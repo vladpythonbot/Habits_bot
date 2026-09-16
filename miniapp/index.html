@@ -878,6 +878,57 @@
       return new Map((items || []).map((item) => [Number(item.id), item]));
     }
 
+    function normalizeStats(stats) {
+      const dailyDone = stats?.daily_done || {};
+      const dates = stats?.dates || Object.keys(dailyDone).sort();
+      const habitsCount = Number(stats?.habits_count || 0);
+      const todayDone = Number(stats?.today_done || 0);
+      const todayPossible = Number(stats?.today_possible || habitsCount);
+      const habitRows = (stats?.habit_rows || stats?.habits || []).map((habit) => {
+        const percent = Number(habit.completion_rate ?? habit.percent ?? 0);
+        const targetDays = Number(habit.possible ?? habit.target_days ?? 0);
+        const factDays = Number(habit.period_completed ?? habit.fact_days ?? 0);
+        return {
+          ...habit,
+          completion_rate: percent,
+          possible: targetDays,
+          period_completed: factDays,
+          missed_count: Number(habit.missed_count ?? habit.missed_days ?? 0),
+          last_7_completed: Number(habit.last_7_completed ?? factDays),
+          last_7_possible: Number(habit.last_7_possible ?? targetDays),
+          best_streak: Number(habit.best_streak ?? habit.streak ?? 0),
+          calendar: habit.calendar || [],
+        };
+      });
+      const monthPossible = Math.max(1, habitRows.reduce((sum, habit) => sum + Number(habit.possible || 0), 0));
+      const monthDone = habitRows.reduce((sum, habit) => sum + Number(habit.period_completed || 0), 0);
+      const weekDates = dates.slice(-7);
+      const weekDone = weekDates.reduce((sum, date) => sum + Number(dailyDone[date] || 0), 0);
+      const weekPossible = Math.max(1, weekDates.length * habitsCount);
+      const dailyPossible = stats?.daily_possible || Object.fromEntries(dates.map((date) => [date, habitsCount]));
+      const bestHabit = stats?.best_habit || [...habitRows].sort((a, b) => b.completion_rate - a.completion_rate)[0] || null;
+      const focusHabit = stats?.focus_habit || [...habitRows].sort((a, b) => a.completion_rate - b.completion_rate)[0] || null;
+
+      return {
+        ...stats,
+        dates,
+        daily_done: dailyDone,
+        daily_possible: dailyPossible,
+        habit_rows: habitRows,
+        today_done: todayDone,
+        today_possible: todayPossible,
+        today_rate: stats?.today_rate ?? (todayPossible ? Math.round(todayDone / todayPossible * 100) : 0),
+        completion_rate: stats?.completion_rate ?? Math.round(monthDone / monthPossible * 100),
+        week_rate: stats?.week_rate ?? Math.round(weekDone / weekPossible * 100),
+        best_streak: stats?.best_streak ?? Math.max(0, ...habitRows.map((habit) => Number(habit.best_streak || habit.streak || 0))),
+        perfect_days: stats?.perfect_days ?? dates.filter((date) => habitsCount > 0 && Number(dailyDone[date] || 0) >= habitsCount).length,
+        trend: stats?.trend ?? 0,
+        best_habit: bestHabit,
+        focus_habit: focusHabit,
+        average_streak: stats?.average_streak ?? Math.round(habitRows.reduce((sum, habit) => sum + Number(habit.streak || 0), 0) / Math.max(1, habitRows.length)),
+      };
+    }
+
     function goalValue(habit) {
       if (habit.goal_type === "weekly") return `weekly_${habit.goal_value || 3}`;
       return habit.goal_type || "daily";
@@ -908,10 +959,11 @@
         request("/api/state"),
         request("/api/stats"),
       ]);
+      const normalizedStats = normalizeStats(stats);
       state.data = data;
-      state.stats = stats;
-      renderToday(data, stats);
-      renderStats(stats);
+      state.stats = normalizedStats;
+      renderToday(data, normalizedStats);
+      renderStats(normalizedStats);
       renderManage(data);
     }
 
