@@ -94,6 +94,19 @@ def habit_status_icon(habit, missed_ids: set[int]) -> str:
     return "▫️"
 
 
+def format_habit_stats_block(title: str, stats: list[dict]) -> str:
+    if not stats:
+        return ""
+    lines = [f"\n\n<b>{title}</b>"]
+    for item in stats:
+        lines.append(
+            f"\n• <b>{escape(item['name'])}</b>: {item['percent']}%"
+            f" · пропусков {item['missed_days']}"
+            f" · серия {item['streak']}"
+        )
+    return "".join(lines)
+
+
 async def build_habit_table_text(user_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
     habits = await get_user_habits(user_id)
     missed_ids = set(await get_missed_habit_ids(user_id))
@@ -232,15 +245,8 @@ async def statistics(message: types.Message, state: FSMContext):
     if primary:
         text += f"\nГлавная строка: {habit_name(primary)} · {escape(primary_time(primary))}"
 
-    stats = await get_user_habit_stats(message.from_user.id)
-    if stats:
-        text += "\n\n<b>Как прижились за 30 дней:</b>"
-        for item in stats:
-            text += (
-                f"\n• <b>{escape(item['name'])}</b>: {item['percent']}%"
-                f" · срывов {item['missed_days']}"
-                f" · серия {item['streak']}"
-            )
+    text += format_habit_stats_block("Быстрая статистика за 7 дней:", await get_user_habit_stats(message.from_user.id, days=7))
+    text += format_habit_stats_block("Большая статистика за 30 дней:", await get_user_habit_stats(message.from_user.id, days=30))
     await message.answer(text, parse_mode="HTML", reply_markup=main_keyboard)
     await send_sleep_statistics(message)
 

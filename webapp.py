@@ -183,7 +183,8 @@ async def api_state(request: web.Request) -> web.Response:
     habits = await get_user_habits(user_id)
     missed_ids = await get_missed_habit_ids(user_id)
     items = [await habit_payload(user_id, habit, missed_ids) for habit in habits]
-    habit_stats = await get_user_habit_stats(user_id)
+    habit_stats_7 = await get_user_habit_stats(user_id, days=7)
+    habit_stats_30 = await get_user_habit_stats(user_id, days=30)
     done_count = sum(1 for item in items if item["done_today"])
 
     return json_response({
@@ -191,7 +192,9 @@ async def api_state(request: web.Request) -> web.Response:
         "today": today_str(),
         "note": await get_daily_note(user_id, today_str()),
         "settings": await get_user_settings(user_id, DEFAULT_HABIT_TABLE_TIME, DEFAULT_SLEEP_RATE_TIME),
-        "habit_stats": habit_stats,
+        "habit_stats": habit_stats_30,
+        "habit_stats_7": habit_stats_7,
+        "habit_stats_30": habit_stats_30,
         "summary": {
             "total": len(items),
             "done": done_count,

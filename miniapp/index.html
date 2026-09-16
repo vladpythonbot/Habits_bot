@@ -294,10 +294,17 @@
       </section>
       <section class="panel">
         <div class="note-head">
-          <h2>Как прижились</h2>
+          <h2>Быстрая статистика</h2>
+          <span class="muted">7 дней</span>
+        </div>
+        <div class="stats-list" id="habit-stats-7"></div>
+      </section>
+      <section class="panel">
+        <div class="note-head">
+          <h2>Большая статистика</h2>
           <span class="muted">30 дней</span>
         </div>
-        <div class="stats-list" id="habit-stats"></div>
+        <div class="stats-list" id="habit-stats-30"></div>
       </section>
     </section>
 
@@ -315,7 +322,7 @@
         <div class="calendar-grid" id="calendar-grid"></div>
         <div class="calendar-legend">
           <span><i class="legend-dot"></i>готово</span>
-          <span><i class="legend-dot missed"></i>срыв</span>
+          <span><i class="legend-dot missed"></i>пропуск</span>
         </div>
       </div>
     </section>
@@ -462,7 +469,8 @@
       $("#hello").textContent = data.user?.first_name || "";
       renderToday(data);
       renderNote(data.note || "");
-      renderHabitStats(data.habit_stats || []);
+      renderHabitStats("#habit-stats-7", data.habit_stats_7 || []);
+      renderHabitStats("#habit-stats-30", data.habit_stats_30 || data.habit_stats || []);
       renderCalendarControls(data);
       renderManage(data);
       renderSettings(data.settings || {});
@@ -479,8 +487,8 @@
       $("#note-status").textContent = "сохранено";
     }
 
-    function renderHabitStats(items) {
-      $("#habit-stats").innerHTML = items.length ? items.map((item) => `
+    function renderHabitStats(target, items) {
+      $(target).innerHTML = items.length ? items.map((item) => `
         <article class="stat-card">
           <div class="stat-top">
             <h2>${escapeHtml(item.name)}</h2>
@@ -488,7 +496,7 @@
           </div>
           <div class="stat-bar"><span class="stat-fill" style="width:${Math.max(0, Math.min(100, item.percent))}%"></span></div>
           <div class="stat-meta">
-            <span>срывов ${item.missed_days}</span>
+            <span>пропусков ${item.missed_days}</span>
             <span>серия ${item.streak}</span>
             <span>${escapeHtml(item.label)}</span>
           </div>
