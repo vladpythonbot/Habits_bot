@@ -10,8 +10,6 @@ from db import init_db
 from routers import (
     APP_VERSION,
     MINI_APP_URL,
-    ask_sleep_rate,
-    daily_reminder,
     router,
     send_daily_habit_table,
 )
@@ -48,26 +46,10 @@ async def main() -> None:
 
     scheduler = AsyncIOScheduler(timezone="Europe/Kyiv")
     scheduler.add_job(
-        daily_reminder,
-        "interval",
-        minutes=1,
-        id="daily_reminder",
-        max_instances=1,
-        coalesce=True,
-    )
-    scheduler.add_job(
         send_daily_habit_table,
         "interval",
         minutes=1,
         id="daily_habit_table",
-        max_instances=1,
-        coalesce=True,
-    )
-    scheduler.add_job(
-        ask_sleep_rate,
-        "interval",
-        minutes=1,
-        id="sleep_rate_prompt",
         max_instances=1,
         coalesce=True,
     )

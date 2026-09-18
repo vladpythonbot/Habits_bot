@@ -15,9 +15,7 @@ from db import (
     clear_habit_day,
     date_range,
     delete_habit_from_db,
-    disable_habit_reminder,
     get_daily_note,
-    get_habit_reminder,
     get_habit_logs,
     get_habit_misses,
     get_missed_habit_ids,
@@ -38,7 +36,6 @@ from db import (
     save_user_settings,
     set_primary_habit,
     set_primary_habit_time,
-    set_habit_reminder,
     today_str,
     unmark_habit_completed,
     update_habit_goal,
@@ -105,7 +102,6 @@ async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
     is_primary = bool(extra[2]) if len(extra) > 2 else False
     primary_time = extra[3] if len(extra) > 3 else None
     today = today_str()
-    reminder = await get_habit_reminder(user_id, habit_id)
     return {
         "id": habit_id,
         "name": name,
@@ -120,7 +116,6 @@ async def habit_payload(user_id: int, habit, missed_ids: set[int]) -> dict:
         "missed_today": habit_id in missed_ids,
         "is_primary": is_primary,
         "primary_time": primary_time,
-        "reminder": reminder,
     }
 
 
@@ -300,17 +295,6 @@ async def api_set_goal(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
-async def api_set_reminder(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    payload = await get_json_payload(request)
-    habit_id = int(request.match_info["habit_id"])
-    reminder_time = validate_hhmm(str(payload.get("reminder_time", "")).strip())
-    saved = await set_habit_reminder(int(user["id"]), habit_id, reminder_time, enabled=True)
-    if not saved:
-        raise web.HTTPNotFound(text="Habit not found")
-    return await api_state(request)
-
-
 async def api_set_primary_time(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     payload = await get_json_payload(request)
@@ -319,13 +303,6 @@ async def api_set_primary_time(request: web.Request) -> web.Response:
     saved = await set_primary_habit_time(int(user["id"]), habit_id, primary_time)
     if not saved:
         raise web.HTTPNotFound(text="Habit not found")
-    return await api_state(request)
-
-
-async def api_disable_reminder(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    habit_id = int(request.match_info["habit_id"])
-    await disable_habit_reminder(int(user["id"]), habit_id)
     return await api_state(request)
 
 
@@ -534,8 +511,6 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits/{habit_id:\\d+}/primary", api_set_primary_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/primary-time", api_set_primary_time)
     app.router.add_post("/api/habits/{habit_id:\\d+}/goal", api_set_goal)
-    app.router.add_post("/api/habits/{habit_id:\\d+}/reminder", api_set_reminder)
-    app.router.add_post("/api/habits/{habit_id:\\d+}/reminder/off", api_disable_reminder)
     app.router.add_post("/api/habits/{habit_id:\\d+}/stats/reset", api_reset_habit_stats)
     app.router.add_post("/api/habits/{habit_id:\\d+}/mark", api_mark)
     app.router.add_post("/api/habits/{habit_id:\\d+}/miss", api_miss)

@@ -411,10 +411,6 @@
       border-top: 1px solid var(--line);
     }
 
-    .reminder-row {
-      grid-template-columns: 50px 1fr auto;
-    }
-
     .goal-row {
       grid-template-columns: 50px 1fr;
       align-items: center;
@@ -470,8 +466,6 @@
       .today-card { grid-template-columns: 96px 1fr; }
       .ring { width: 92px; }
       .mark-actions { grid-template-columns: 1fr; }
-      .reminder-row { grid-template-columns: 44px 1fr; }
-      .reminder-row button { grid-column: 1 / -1; }
       .status { white-space: normal; text-align: right; }
     }
 
@@ -578,13 +572,6 @@
       </div>
     </section>
   </main>
-
-  <datalist id="reminder-presets">
-    <option value="08:00" label="Утро"></option>
-    <option value="13:00" label="День"></option>
-    <option value="20:00" label="Вечер"></option>
-    <option value="09:00, 14:00, 20:00" label="Часто"></option>
-  </datalist>
 
   <div class="modal hidden" id="delete-modal">
     <div class="delete-card">
@@ -832,13 +819,12 @@
         list.innerHTML = '<div class="empty">Пока нет активных привычек. Добавь первую здесь, а отмечай в боте.</div>';
       } else {
         list.innerHTML = data.habits.map((habit) => {
-        const reminderText = habit.reminder?.enabled ? `Напоминание: ${escapeHtml(habit.reminder.reminder_time)}` : "Напоминание выключено";
         return `
           <article class="habit-card">
             <div class="item-top">
               <div class="item-title">
                 <h2 class="habit-name">${escapeHtml(habit.name)}</h2>
-                <p class="muted">${escapeHtml(habit.goal_text)} · серия: ${habit.streak} · всего: ${habit.total_completed} · ${reminderText}</p>
+                <p class="muted">${escapeHtml(habit.goal_text)} · серия: ${habit.streak} · всего: ${habit.total_completed}</p>
               </div>
               <span class="status ${habit.done_today ? "done" : "open"}">${habit.done_today ? "сегодня отмечено" : "ждёт отметки"}</span>
             </div>
@@ -853,12 +839,6 @@
                   ${goalOptions(goalValue(habit))}
                 </select>
               </div>
-              <form class="inline-form reminder-row" data-action="reminder-form" data-id="${habit.id}">
-                <input value="⏰" disabled>
-                <input name="reminder" list="reminder-presets" placeholder="08:00 или 09:00, 21:00" value="${escapeHtml(habit.reminder?.reminder_time || "")}">
-                <button type="submit">Сохранить</button>
-              </form>
-              ${habit.reminder?.enabled ? `<button class="ghost" data-action="reminder-off" data-id="${habit.id}">Отключить напоминание</button>` : ""}
             </div>
           </article>
         `;
@@ -899,19 +879,6 @@
       renderManage(state.data);
     });
 
-    list.addEventListener("submit", async (event) => {
-      const reminderForm = event.target.closest('form[data-action="reminder-form"]');
-      if (!reminderForm) return;
-      event.preventDefault();
-      const reminder = reminderForm.elements.reminder.value.trim();
-      if (!reminder) return;
-      state.data = await request(`/api/habits/${reminderForm.dataset.id}/reminder`, { reminder_time: reminder });
-      state.stats = normalizeStats(await request("/api/stats"));
-      renderToday(state.data, state.stats);
-      renderMonth(state.stats);
-      renderManage(state.data);
-    });
-
     list.addEventListener("change", async (event) => {
       const select = event.target.closest('select[data-action="goal"]');
       if (!select) return;
@@ -931,10 +898,6 @@
         const nextName = prompt("Новое название привычки:", name);
         if (!nextName || !nextName.trim()) return;
         state.data = await request(`/api/habits/${id}/rename`, { name: nextName.trim() });
-      }
-
-      if (action === "reminder-off") {
-        state.data = await request(`/api/habits/${id}/reminder/off`);
       }
 
       if (action === "delete") {

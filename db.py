@@ -184,22 +184,6 @@ async def init_db():
         """)
 
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS habit_reminders (
-                user_id INTEGER NOT NULL,
-                habit_id INTEGER NOT NULL,
-                enabled BOOLEAN DEFAULT 1,
-                reminder_time TEXT NOT NULL,
-                PRIMARY KEY(user_id, habit_id)
-            )
-        """)
-        await db.execute("""
-            INSERT OR IGNORE INTO habit_reminders (user_id, habit_id, enabled, reminder_time)
-            SELECT user_id, id, 1, COALESCE(primary_time, '09:00')
-            FROM habits
-            WHERE archived_at IS NULL AND is_primary = 1
-        """)
-
-        await db.execute("""
             CREATE TABLE IF NOT EXISTS sleep_logs (
                 user_id INTEGER NOT NULL,
                 sleep_date TEXT NOT NULL,
@@ -240,6 +224,14 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS daily_table_sends (
+                user_id INTEGER NOT NULL,
+                send_date TEXT NOT NULL,
+                sent_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, send_date)
+            )
+        """)
+        await db.execute("""
             INSERT OR IGNORE INTO habit_logs (user_id, habit_id, completed_date, created_at)
             SELECT user_id, id, last_completed_date, datetime('now')
             FROM habits
@@ -269,16 +261,6 @@ async def delete_archived_habits(db):
             FROM habits
             WHERE habits.id = habit_misses.habit_id
               AND habits.user_id = habit_misses.user_id
-              AND habits.archived_at IS NOT NULL
-        )
-    """)
-    await db.execute("""
-        DELETE FROM habit_reminders
-        WHERE EXISTS (
-            SELECT 1
-            FROM habits
-            WHERE habits.id = habit_reminders.habit_id
-              AND habits.user_id = habit_reminders.user_id
               AND habits.archived_at IS NOT NULL
         )
     """)
@@ -317,11 +299,6 @@ async def save_habit(
              goal_type, goal_value, habit_position, is_primary, primary_time)
             VALUES (?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?, ?)
         """, (user_id, habit_name, today_str(), goal_days, group_id, goal_type, goal_value, position, is_primary, primary_time))
-        if is_primary:
-            await db.execute("""
-                INSERT INTO habit_reminders (user_id, habit_id, enabled, reminder_time)
-                VALUES (?, ?, 1, ?)
-            """, (user_id, cursor.lastrowid, primary_time))
         await db.commit()
 
 
@@ -366,13 +343,6 @@ async def set_primary_habit(user_id: int, habit_id: int) -> bool:
             UPDATE habits
             SET is_primary = 1, primary_time = '09:00'
             WHERE user_id = ? AND id = ?
-        """, (user_id, habit_id))
-        await db.execute("""
-            INSERT INTO habit_reminders (user_id, habit_id, enabled, reminder_time)
-            VALUES (?, ?, 1, '09:00')
-            ON CONFLICT(user_id, habit_id) DO UPDATE SET
-                enabled = 1,
-                reminder_time = excluded.reminder_time
         """, (user_id, habit_id))
         await db.commit()
         return True
@@ -698,7 +668,6 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
 
         await db.execute("DELETE FROM habit_logs WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
         await db.execute("DELETE FROM habit_misses WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
-        await db.execute("DELETE FROM habit_reminders WHERE habit_id = ? AND user_id = ?", (habit_id, user_id))
         await db.execute("DELETE FROM habits WHERE id = ? AND user_id = ?", (habit_id, user_id))
         if was_primary:
             cursor = await db.execute("""
@@ -716,10 +685,6 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
                     SET is_primary = 1,
                         primary_time = COALESCE(primary_time, '09:00')
                     WHERE user_id = ? AND id = ?
-                """, (user_id, next_habit_id))
-                await db.execute("""
-                    INSERT OR IGNORE INTO habit_reminders (user_id, habit_id, enabled, reminder_time)
-                    VALUES (?, ?, 1, '09:00')
                 """, (user_id, next_habit_id))
         await db.commit()
     return True
@@ -1080,43 +1045,15 @@ async def get_users_for_habit_table_time(current_time: str, default_time: str):
         return [row[0] for row in rows]
 
 
-async def get_users_for_sleep_rate_time(current_time: str, default_time: str):
+async def reserve_daily_table_send(user_id: int, send_date: str) -> bool:
+    now = datetime.now().isoformat(timespec="seconds")
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
-            SELECT DISTINCT h.user_id
-            FROM habits AS h
-            LEFT JOIN user_settings AS s ON s.user_id = h.user_id
-            WHERE h.archived_at IS NULL
-              AND COALESCE(s.sleep_rate_time, ?) = ?
-        """, (default_time, current_time))
-        rows = await cursor.fetchall()
-        return [row[0] for row in rows]
-
-
-async def set_habit_reminder(user_id: int, habit_id: int, reminder_time: str, enabled: bool = True) -> bool:
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT 1
-            FROM habits
-            WHERE user_id = ? AND id = ? AND archived_at IS NULL
-        """, (user_id, habit_id))
-        if not await cursor.fetchone():
-            return False
-
-        await db.execute("""
-            INSERT INTO habit_reminders (user_id, habit_id, enabled, reminder_time)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id, habit_id) DO UPDATE SET
-                enabled = excluded.enabled,
-                reminder_time = excluded.reminder_time
-        """, (user_id, habit_id, enabled, reminder_time))
-        await db.execute("""
-            UPDATE habits
-            SET primary_time = ?
-            WHERE user_id = ? AND id = ? AND is_primary = 1
-        """, (reminder_time, user_id, habit_id))
+            INSERT OR IGNORE INTO daily_table_sends (user_id, send_date, sent_at)
+            VALUES (?, ?, ?)
+        """, (user_id, send_date, now))
         await db.commit()
-        return True
+        return cursor.rowcount == 1
 
 
 async def set_primary_habit_time(user_id: int, habit_id: int, primary_time: str) -> bool:
@@ -1135,88 +1072,5 @@ async def set_primary_habit_time(user_id: int, habit_id: int, primary_time: str)
             SET is_primary = 1, primary_time = ?
             WHERE user_id = ? AND id = ?
         """, (primary_time, user_id, habit_id))
-        await db.execute("""
-            INSERT INTO habit_reminders (user_id, habit_id, enabled, reminder_time)
-            VALUES (?, ?, 1, ?)
-            ON CONFLICT(user_id, habit_id) DO UPDATE SET
-                enabled = 1,
-                reminder_time = excluded.reminder_time
-        """, (user_id, habit_id, primary_time))
         await db.commit()
         return True
-
-
-async def disable_habit_reminder(user_id: int, habit_id: int) -> bool:
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            UPDATE habit_reminders
-            SET enabled = 0
-            WHERE user_id = ? AND habit_id = ?
-        """, (user_id, habit_id))
-        await db.commit()
-        return cursor.rowcount > 0
-
-
-async def get_habit_reminder(user_id: int, habit_id: int):
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT enabled, reminder_time
-            FROM habit_reminders
-            WHERE user_id = ? AND habit_id = ?
-        """, (user_id, habit_id))
-        row = await cursor.fetchone()
-        if not row:
-            return None
-
-        return {"enabled": bool(row[0]), "reminder_time": row[1]}
-
-
-async def get_due_habit_reminders(reminder_time: str):
-    today = datetime.now().date()
-    today_value = today.strftime("%Y-%m-%d")
-    week_start = (today - timedelta(days=today.weekday())).strftime("%Y-%m-%d")
-
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT h.user_id, h.id, h.habit_name, h.last_completed_date, r.reminder_time, h.goal_type, h.goal_value
-            FROM habit_reminders AS r
-            JOIN habits AS h
-                ON h.user_id = r.user_id AND h.id = r.habit_id
-            WHERE r.enabled = 1
-              AND h.archived_at IS NULL
-        """)
-        rows = await cursor.fetchall()
-
-        due = []
-        for user_id, habit_id, habit_name, last_completed_date, times, goal_type, goal_value in rows:
-            if reminder_time not in parse_reminder_times(times):
-                continue
-            if last_completed_date == today_value:
-                continue
-            if goal_type == "weekdays" and today.weekday() >= 5:
-                continue
-            if goal_type == "weekly":
-                cursor = await db.execute("""
-                    SELECT COUNT(*)
-                    FROM habit_logs
-                    WHERE user_id = ? AND habit_id = ? AND completed_date >= ?
-                """, (user_id, habit_id, week_start))
-                completed_this_week = (await cursor.fetchone())[0]
-                if completed_this_week >= max(1, min(7, int(goal_value or 3))):
-                    continue
-            due.append((user_id, habit_id, habit_name, last_completed_date))
-
-    return due
-
-
-def parse_reminder_times(value: str | None) -> list[str]:
-    if not value:
-        return ["15:00"]
-
-    times = []
-    for item in value.split(","):
-        item = item.strip()
-        if item:
-            times.append(item)
-
-    return sorted(set(times)) or ["15:00"]

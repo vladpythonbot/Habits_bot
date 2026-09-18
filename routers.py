@@ -12,16 +12,14 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from bot import bot
 from db import (
     clear_habit_day,
-    get_due_habit_reminders,
     get_missed_habit_ids,
     get_users_for_habit_table_time,
-    get_users_for_sleep_rate_time,
     get_sleep_stats,
     get_user_habit_stats,
     get_user_habits,
-    is_habit_missed,
     mark_habit_completed,
     record_habit_miss,
+    reserve_daily_table_send,
     save_sleep_rate,
     today_str,
     unmark_habit_completed,
@@ -37,7 +35,6 @@ MINI_APP_URL = os.getenv("MINI_APP_URL") or (
     f"https://{RAILWAY_PUBLIC_DOMAIN}/miniapp" if RAILWAY_PUBLIC_DOMAIN else None
 )
 HABIT_TABLE_TIME = os.getenv("HABIT_TABLE_TIME", "21:00")
-SLEEP_RATE_TIME = os.getenv("SLEEP_RATE_TIME", "09:00")
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
@@ -181,30 +178,22 @@ async def send_sleep_statistics(message: types.Message) -> None:
 
 
 async def send_daily_habit_table():
-    current_time = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%H:%M")
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    current_time = now.strftime("%H:%M")
+    current_date = now.date().isoformat()
     try:
-        for user_id in await get_users_for_habit_table_time(current_time, HABIT_TABLE_TIME):
-            text, keyboard = await build_habit_table_text(user_id)
-            await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=keyboard)
+        user_ids = await get_users_for_habit_table_time(current_time, HABIT_TABLE_TIME)
     except Exception as error:
         logger.error("Ошибка send_daily_habit_table: %s", error, exc_info=True)
+        return
 
-
-async def ask_sleep_rate():
-    current_time = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%H:%M")
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=str(value), callback_data=f"sleep_rate_{value}")
-        for value in range(1, 6)
-    ]])
-    try:
-        for user_id in await get_users_for_sleep_rate_time(current_time, SLEEP_RATE_TIME):
-            await bot.send_message(
-                user_id,
-                "Как спал? Оцени качество сна от 1 до 5.",
-                reply_markup=keyboard,
-            )
-    except Exception as error:
-        logger.error("Ошибка ask_sleep_rate: %s", error, exc_info=True)
+    for user_id in user_ids:
+        try:
+            if await reserve_daily_table_send(user_id, current_date):
+                text, keyboard = await build_habit_table_text(user_id)
+                await bot.send_message(user_id, text, parse_mode="HTML", reply_markup=keyboard)
+        except Exception as error:
+            logger.error("Не удалось отправить дневную таблицу user_id=%s: %s", user_id, error, exc_info=True)
 
 
 @router.message(Command("start"))
@@ -313,37 +302,3 @@ async def sleep_rate(callback: types.CallbackQuery):
         return
     await callback.message.edit_text(f"Сон записал: {rate}/5.")
     await callback.answer("Записал сон")
-
-
-async def send_habit_reminder_to_user(
-    user_id: int,
-    habit_id: int,
-    habit_name_text: str,
-    last_completed_date: str | None,
-):
-    if last_completed_date == today_str() or await is_habit_missed(user_id, habit_id):
-        return
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Выполнил", callback_data=f"mark_{habit_id}"),
-        InlineKeyboardButton(text="⚪ Не сегодня", callback_data=f"miss_{habit_id}"),
-    ]])
-
-    try:
-        await bot.send_message(
-            chat_id=user_id,
-            text=f"⏰ <b>Строка из блокнота</b>\n\n<b>{escape(habit_name_text)}</b>\nЕсли сегодня не день — просто отметь спокойно.",
-            parse_mode="HTML",
-            reply_markup=keyboard,
-        )
-    except Exception as error:
-        logger.error("Не удалось отправить напоминание habit_id=%s user_id=%s: %s", habit_id, user_id, error)
-
-
-async def daily_reminder():
-    current_time = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%H:%M")
-    try:
-        for user_id, habit_id, name, last_completed in await get_due_habit_reminders(current_time):
-            await send_habit_reminder_to_user(user_id, habit_id, name, last_completed)
-    except Exception as error:
-        logger.error("Ошибка daily_reminder: %s", error, exc_info=True)
