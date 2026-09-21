@@ -19,7 +19,6 @@ from db import (
     get_habit_logs,
     get_habit_misses,
     get_missed_habit_ids,
-    get_user_settings,
     get_user_habits,
     get_user_habit_stats,
     get_sleep_stats,
@@ -33,12 +32,10 @@ from db import (
     save_habit,
     save_daily_note,
     save_sleep_log,
-    save_user_settings,
     set_primary_habit,
     set_primary_habit_time,
     today_str,
     unmark_habit_completed,
-    update_habit_goal,
     update_habit_name,
 )
 
@@ -47,7 +44,6 @@ BASE_DIR = Path(__file__).resolve().parent
 WEBAPP_DIR = BASE_DIR / "miniapp"
 MAX_INIT_DATA_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", str(24 * 60 * 60)))
 DEFAULT_HABIT_TABLE_TIME = os.getenv("HABIT_TABLE_TIME", "21:00")
-DEFAULT_SLEEP_RATE_TIME = os.getenv("SLEEP_RATE_TIME", "09:00")
 logger = logging.getLogger(__name__)
 
 
@@ -186,7 +182,6 @@ async def api_state(request: web.Request) -> web.Response:
         "user": {"id": user_id, "first_name": user.get("first_name", "")},
         "today": today_str(),
         "note": await get_daily_note(user_id, today_str()),
-        "settings": await get_user_settings(user_id, DEFAULT_HABIT_TABLE_TIME, DEFAULT_SLEEP_RATE_TIME),
         "habit_stats": habit_stats_30,
         "habit_stats_7": habit_stats_7,
         "habit_stats_30": habit_stats_30,
@@ -249,17 +244,6 @@ async def api_reorder_habits(request: web.Request) -> web.Response:
     return await api_state(request)
 
 
-async def api_save_settings(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    payload = await get_json_payload(request)
-    habit_table_time = validate_hhmm(str(payload.get("habit_table_time", "")).strip())
-    sleep_rate_time = validate_hhmm(str(payload.get("sleep_rate_time", "")).strip())
-    saved = await save_user_settings(int(user["id"]), habit_table_time, sleep_rate_time)
-    if not saved:
-        raise web.HTTPBadRequest(text="Invalid settings")
-    return await api_state(request)
-
-
 def validate_hhmm(value: str) -> str:
     try:
         hours, minutes = [int(part) for part in value.split(":", 1)]
@@ -274,22 +258,6 @@ async def api_set_primary_habit(request: web.Request) -> web.Response:
     user = await get_telegram_user(request)
     habit_id = int(request.match_info["habit_id"])
     updated = await set_primary_habit(int(user["id"]), habit_id)
-    if not updated:
-        raise web.HTTPNotFound(text="Habit not found")
-    return await api_state(request)
-
-
-async def api_set_goal(request: web.Request) -> web.Response:
-    user = await get_telegram_user(request)
-    payload = await get_json_payload(request)
-    habit_id = int(request.match_info["habit_id"])
-    goal_type = str(payload.get("goal_type", "daily")).strip()
-    raw_value = payload.get("goal_value")
-    try:
-        goal_value = int(raw_value) if raw_value is not None else None
-    except (TypeError, ValueError):
-        goal_value = None
-    updated = await update_habit_goal(int(user["id"]), habit_id, goal_type, goal_value)
     if not updated:
         raise web.HTTPNotFound(text="Habit not found")
     return await api_state(request)
@@ -313,6 +281,8 @@ async def api_stats(request: web.Request) -> web.Response:
     habits = await get_user_habits(user_id)
     logs = await get_habit_logs(user_id, days=30)
     missed_today = set(await get_missed_habit_ids(user_id))
+    habit_stats_7 = await get_user_habit_stats(user_id, days=7)
+    habit_stats_30 = await get_user_habit_stats(user_id, days=30)
 
     daily_done = {date: 0 for date in date_range(30)}
     for _, completed_date in logs:
@@ -330,7 +300,10 @@ async def api_stats(request: web.Request) -> web.Response:
         "today_open": today_open,
         "active_days": sum(1 for value in daily_done.values() if value > 0),
         "daily_done": daily_done,
-        "habits": await get_user_habit_stats(user_id),
+        "habits": habit_stats_30,
+        "habit_stats": habit_stats_30,
+        "habit_stats_7": habit_stats_7,
+        "habit_stats_30": habit_stats_30,
     })
 
 
@@ -496,7 +469,6 @@ def create_web_app() -> web.Application:
     app.router.add_get("/miniapp", index)
     app.router.add_get("/api/state", api_state)
     app.router.add_post("/api/state", api_state)
-    app.router.add_post("/api/settings", api_save_settings)
     app.router.add_post("/api/stats", api_stats)
     app.router.add_get("/api/calendar", api_calendar)
     app.router.add_post("/api/note/today", api_save_note_today)
@@ -510,7 +482,6 @@ def create_web_app() -> web.Application:
     app.router.add_post("/api/habits/reorder", api_reorder_habits)
     app.router.add_post("/api/habits/{habit_id:\\d+}/primary", api_set_primary_habit)
     app.router.add_post("/api/habits/{habit_id:\\d+}/primary-time", api_set_primary_time)
-    app.router.add_post("/api/habits/{habit_id:\\d+}/goal", api_set_goal)
     app.router.add_post("/api/habits/{habit_id:\\d+}/stats/reset", api_reset_habit_stats)
     app.router.add_post("/api/habits/{habit_id:\\d+}/mark", api_mark)
     app.router.add_post("/api/habits/{habit_id:\\d+}/miss", api_miss)

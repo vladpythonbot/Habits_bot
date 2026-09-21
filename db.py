@@ -77,14 +77,6 @@ def sleep_hours(sleep_out: str | None, sleep_up: str | None) -> float:
     return round((end - start).total_seconds() / 3600, 1)
 
 
-def valid_hhmm(value: str) -> bool:
-    try:
-        hours, minutes = [int(part) for part in value.split(":", 1)]
-    except (AttributeError, ValueError):
-        return False
-    return 0 <= hours <= 23 and 0 <= minutes <= 59
-
-
 async def init_db():
     Path(DB_NAME).parent.mkdir(parents=True, exist_ok=True)
 
@@ -213,14 +205,6 @@ async def init_db():
                 note_text TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY(user_id, note_date)
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS user_settings (
-                user_id INTEGER PRIMARY KEY,
-                habit_table_time TEXT NOT NULL DEFAULT '21:00',
-                sleep_rate_time TEXT NOT NULL DEFAULT '09:00',
-                updated_at TEXT NOT NULL
             )
         """)
         await db.execute("""
@@ -690,19 +674,6 @@ async def delete_habit_from_db(user_id: int, habit_id: int):
     return True
 
 
-async def update_habit_goal(user_id: int, habit_id: int, goal_type: str, goal_value: int | None = None) -> bool:
-    normalized_type, normalized_value = normalize_habit_goal(goal_type, goal_value)
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            UPDATE habits
-            SET goal_type = ?,
-                goal_value = ?
-            WHERE id = ? AND user_id = ? AND archived_at IS NULL
-        """, (normalized_type, normalized_value, habit_id, user_id))
-        await db.commit()
-        return cursor.rowcount > 0
-
-
 async def record_habit_miss(user_id: int, habit_id: int, missed_date: str | None = None) -> bool:
     missed_date = missed_date or today_str()
 
@@ -999,48 +970,15 @@ async def save_daily_note(user_id: int, note_date: str, note_text: str) -> bool:
         return True
 
 
-async def get_user_settings(user_id: int, habit_table_default: str = "21:00", sleep_rate_default: str = "09:00") -> dict:
-    async with aiosqlite.connect(DB_NAME) as db:
-        cursor = await db.execute("""
-            SELECT habit_table_time, sleep_rate_time
-            FROM user_settings
-            WHERE user_id = ?
-        """, (user_id,))
-        row = await cursor.fetchone()
-
-    return {
-        "habit_table_time": row[0] if row and valid_hhmm(row[0]) else habit_table_default,
-        "sleep_rate_time": row[1] if row and valid_hhmm(row[1]) else sleep_rate_default,
-    }
-
-
-async def save_user_settings(user_id: int, habit_table_time: str, sleep_rate_time: str) -> bool:
-    if not valid_hhmm(habit_table_time) or not valid_hhmm(sleep_rate_time):
-        return False
-
-    now = datetime.now().isoformat(timespec="seconds")
-    async with aiosqlite.connect(DB_NAME) as db:
-        await db.execute("""
-            INSERT INTO user_settings (user_id, habit_table_time, sleep_rate_time, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                habit_table_time = excluded.habit_table_time,
-                sleep_rate_time = excluded.sleep_rate_time,
-                updated_at = excluded.updated_at
-        """, (user_id, habit_table_time, sleep_rate_time, now))
-        await db.commit()
-        return True
-
-
 async def get_users_for_habit_table_time(current_time: str, default_time: str):
+    if current_time != default_time:
+        return []
     async with aiosqlite.connect(DB_NAME) as db:
         cursor = await db.execute("""
             SELECT DISTINCT h.user_id
             FROM habits AS h
-            LEFT JOIN user_settings AS s ON s.user_id = h.user_id
             WHERE h.archived_at IS NULL
-              AND COALESCE(s.habit_table_time, ?) = ?
-        """, (default_time, current_time))
+        """)
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 

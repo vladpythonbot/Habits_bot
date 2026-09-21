@@ -403,19 +403,6 @@
       margin-top: 12px;
     }
 
-    .settings {
-      display: grid;
-      gap: 8px;
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid var(--line);
-    }
-
-    .goal-row {
-      grid-template-columns: 50px 1fr;
-      align-items: center;
-    }
-
     .empty,
     .error {
       border: 1px dashed var(--line);
@@ -511,7 +498,7 @@
 
     <nav class="tabs">
       <button class="active" id="today-tab" type="button">Сегодня</button>
-      <button class="secondary" id="month-tab" type="button">Месяц</button>
+      <button class="secondary" id="month-tab" type="button">Статистика</button>
       <button class="secondary" id="manage-tab" type="button">Управление</button>
     </nav>
 
@@ -539,8 +526,8 @@
       <div class="panel month-summary">
         <div class="month-total">
           <div>
-            <h2>Месяц</h2>
-            <p class="muted" id="month-copy">Выполнение за 30 дней</p>
+            <h2>Статистика</h2>
+            <p class="muted" id="month-copy">Последние 7 и 30 дней</p>
           </div>
           <b id="month-percent">0%</b>
         </div>
@@ -548,8 +535,14 @@
       </div>
 
       <div class="section-head">
-        <h2>По привычкам</h2>
-        <span class="muted">30 дней</span>
+        <h2>Последние 7 дней</h2>
+        <span class="muted" id="week-total">0%</span>
+      </div>
+      <div class="month-list" id="week-list"></div>
+
+      <div class="section-head">
+        <h2>Последние 30 дней</h2>
+        <span class="muted" id="month-total">0%</span>
       </div>
       <div class="month-list" id="month-list"></div>
     </section>
@@ -601,6 +594,7 @@
     const monthView = document.querySelector("#month-view");
     const manageView = document.querySelector("#manage-view");
     const todayList = document.querySelector("#today-list");
+    const weekList = document.querySelector("#week-list");
     const monthList = document.querySelector("#month-list");
     const list = document.querySelector("#list");
     const form = document.querySelector("#add-form");
@@ -671,7 +665,7 @@
       const habitsCount = Number(stats?.habits_count || 0);
       const todayDone = Number(stats?.today_done || 0);
       const todayPossible = Number(stats?.today_possible || habitsCount);
-      const habitRows = (stats?.habit_rows || stats?.habits || []).map((habit) => {
+      const normalizeHabitRows = (items) => (items || []).map((habit) => {
         const percent = Number(habit.completion_rate ?? habit.percent ?? 0);
         const targetDays = Number(habit.possible ?? habit.target_days ?? 0);
         const factDays = Number(habit.period_completed ?? habit.fact_days ?? 0);
@@ -687,11 +681,13 @@
           calendar: habit.calendar || [],
         };
       });
+      const habitRows7 = normalizeHabitRows(stats?.habit_stats_7 || []);
+      const habitRows30 = normalizeHabitRows(stats?.habit_stats_30 || stats?.habit_rows || stats?.habits || []);
+      const habitRows = habitRows30;
       const monthPossible = Math.max(1, habitRows.reduce((sum, habit) => sum + Number(habit.possible || 0), 0));
       const monthDone = habitRows.reduce((sum, habit) => sum + Number(habit.period_completed || 0), 0);
-      const weekDates = dates.slice(-7);
-      const weekDone = weekDates.reduce((sum, date) => sum + Number(dailyDone[date] || 0), 0);
-      const weekPossible = Math.max(1, weekDates.length * habitsCount);
+      const weekPossible = Math.max(1, habitRows7.reduce((sum, habit) => sum + Number(habit.possible || 0), 0));
+      const weekDone = habitRows7.reduce((sum, habit) => sum + Number(habit.period_completed || 0), 0);
       const dailyPossible = stats?.daily_possible || Object.fromEntries(dates.map((date) => [date, habitsCount]));
       const bestHabit = stats?.best_habit || [...habitRows].sort((a, b) => b.completion_rate - a.completion_rate)[0] || null;
       const focusHabit = stats?.focus_habit || [...habitRows].sort((a, b) => a.completion_rate - b.completion_rate)[0] || null;
@@ -702,6 +698,8 @@
         daily_done: dailyDone,
         daily_possible: dailyPossible,
         habit_rows: habitRows,
+        habit_stats_7: habitRows7,
+        habit_stats_30: habitRows30,
         today_done: todayDone,
         today_possible: todayPossible,
         today_rate: stats?.today_rate ?? (todayPossible ? Math.round(todayDone / todayPossible * 100) : 0),
@@ -714,31 +712,6 @@
         focus_habit: focusHabit,
         average_streak: stats?.average_streak ?? Math.round(habitRows.reduce((sum, habit) => sum + Number(habit.streak || 0), 0) / Math.max(1, habitRows.length)),
       };
-    }
-
-    function goalValue(habit) {
-      if (habit.goal_type === "weekly") return `weekly_${habit.goal_value || 3}`;
-      return habit.goal_type || "daily";
-    }
-
-    function goalPayload(value) {
-      if (value.startsWith("weekly_")) {
-        return { goal_type: "weekly", goal_value: Number(value.replace("weekly_", "")) || 3 };
-      }
-      if (value === "weekdays") return { goal_type: "weekdays", goal_value: 5 };
-      return { goal_type: "daily", goal_value: 7 };
-    }
-
-    function goalOptions(selected) {
-      const options = [
-        ["daily", "Каждый день"],
-        ["weekdays", "По будням"],
-        ["weekly_3", "3 раза в неделю"],
-        ["weekly_5", "5 раз в неделю"],
-      ];
-      return options.map(([value, label]) => (
-        `<option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>`
-      )).join("");
     }
 
     async function refreshAll() {
@@ -764,10 +737,13 @@
         return;
       }
 
-      const statsMap = byId(stats.habit_rows);
+      const stats7Map = byId(stats.habit_stats_7);
+      const stats30Map = byId(stats.habit_stats_30);
       todayList.innerHTML = habits.map((habit) => {
-        const row = statsMap.get(Number(habit.id));
-        const rate = row?.completion_rate || 0;
+        const row7 = stats7Map.get(Number(habit.id));
+        const row30 = stats30Map.get(Number(habit.id));
+        const rate = row7?.completion_rate || 0;
+        const monthRate = row30?.completion_rate || 0;
         const status = habit.done_today ? "done" : "open";
         const statusText = habit.done_today ? "готово" : (habit.missed_today ? "не сегодня" : "ждёт отметки");
         return `
@@ -775,7 +751,7 @@
             <div class="habit-progress-head">
               <div class="habit-progress-title">
                 <strong>${escapeHtml(habit.name)}</strong>
-                <span class="muted">${escapeHtml(habit.goal_text)} · серия ${habit.streak} · ${rate}% за 30 дней</span>
+                <span class="muted">7 дней: ${rate}% · 30 дней: ${monthRate}% · серия ${habit.streak}</span>
               </div>
               <span class="status ${status}">${statusText}</span>
             </div>
@@ -786,18 +762,32 @@
     }
 
     function renderMonth(stats) {
-      const rows = stats.habit_rows || [];
+      const weekRows = stats.habit_stats_7 || [];
+      const monthRows = stats.habit_stats_30 || [];
+      const rows = monthRows;
       const totalPercent = Math.max(0, Math.min(100, Number(stats.completion_rate || 0)));
       const totalDone = rows.reduce((sum, habit) => sum + Number(habit.period_completed || 0), 0);
       const totalPlan = rows.reduce((sum, habit) => sum + Number(habit.possible || 0), 0);
+      const weekDone = weekRows.reduce((sum, habit) => sum + Number(habit.period_completed || 0), 0);
+      const weekPlan = weekRows.reduce((sum, habit) => sum + Number(habit.possible || 0), 0);
+      const weekPercent = Math.max(0, Math.min(100, Number(stats.week_rate || 0)));
 
       document.querySelector("#month-percent").textContent = `${totalPercent}%`;
       document.querySelector("#month-fill").style.setProperty("--width", `${totalPercent}%`);
       document.querySelector("#month-copy").textContent = totalPlan
         ? `${totalDone}/${totalPlan} выполнено по плану`
         : "Пока нет плана на месяц";
+      document.querySelector("#week-total").textContent = `${weekPercent}%`;
+      document.querySelector("#month-total").textContent = `${totalPercent}%`;
 
-      monthList.innerHTML = rows.length ? rows.map((habit) => {
+      weekList.innerHTML = renderPeriodRows(weekRows, 7, weekDone, weekPlan);
+      monthList.innerHTML = renderPeriodRows(monthRows, 30, totalDone, totalPlan);
+    }
+
+    function renderPeriodRows(rows, days, totalDone, totalPlan) {
+      if (!rows.length) return '<div class="empty">Статистика появится после первых отметок.</div>';
+      if (!totalPlan && !totalDone) return '<div class="empty">Пока нечего считать. Сделай первые отметки.</div>';
+      return rows.map((habit) => {
         const percent = Math.max(0, Math.min(100, Number(habit.completion_rate || 0)));
         const done = Number(habit.period_completed || 0);
         const plan = Number(habit.possible || 0);
@@ -808,10 +798,10 @@
               <span class="month-row-percent">${percent}%</span>
             </div>
             <div class="rate-track"><div class="rate-fill" style="--width:${percent}%"></div></div>
-            <p class="muted">${done}/${plan} за 30 дней · серия ${habit.streak || 0}</p>
+            <p class="muted">${done}/${plan} за ${days} дней · серия ${habit.streak || 0}</p>
           </article>
         `;
-      }).join("") : '<div class="empty">Статистика появится после первых отметок.</div>';
+      }).join("");
     }
 
     function renderManage(data) {
@@ -824,21 +814,13 @@
             <div class="item-top">
               <div class="item-title">
                 <h2 class="habit-name">${escapeHtml(habit.name)}</h2>
-                <p class="muted">${escapeHtml(habit.goal_text)} · серия: ${habit.streak} · всего: ${habit.total_completed}</p>
+                <p class="muted">серия: ${habit.streak} · всего: ${habit.total_completed}</p>
               </div>
               <span class="status ${habit.done_today ? "done" : "open"}">${habit.done_today ? "сегодня отмечено" : "ждёт отметки"}</span>
             </div>
             <div class="actions">
               <button class="ghost" data-action="rename" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Переименовать</button>
               <button class="danger" data-action="delete" data-id="${habit.id}" data-name="${escapeHtml(habit.name)}">Удалить</button>
-            </div>
-            <div class="settings">
-              <div class="inline-form goal-row">
-                <input value="Цель" disabled>
-                <select data-action="goal" data-id="${habit.id}">
-                  ${goalOptions(goalValue(habit))}
-                </select>
-              </div>
             </div>
           </article>
         `;
@@ -873,16 +855,6 @@
       if (!name) return;
       input.value = "";
       state.data = await request("/api/habits", { name });
-      state.stats = normalizeStats(await request("/api/stats"));
-      renderToday(state.data, state.stats);
-      renderMonth(state.stats);
-      renderManage(state.data);
-    });
-
-    list.addEventListener("change", async (event) => {
-      const select = event.target.closest('select[data-action="goal"]');
-      if (!select) return;
-      state.data = await request(`/api/habits/${select.dataset.id}/goal`, goalPayload(select.value));
       state.stats = normalizeStats(await request("/api/stats"));
       renderToday(state.data, state.stats);
       renderMonth(state.stats);
