@@ -99,7 +99,7 @@ def format_habit_stats_block(title: str, stats: list[dict]) -> str:
         period = item.get("active_days") or item.get("target_days") or 0
         lines.append(
             f"\n• <b>{escape(item['name'])}</b>: {item['percent']}%"
-            f" · сделано {item['fact_days']}/{item['target_days']} в идеале"
+            f" · сделано {item['fact_days']}/{item['target_days']}"
             f" · период {period} дн."
             f" · серия {item['streak']}"
         )

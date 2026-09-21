@@ -554,11 +554,12 @@
           <input id="habit-name" maxlength="80" placeholder="Например: выпить воду" autocomplete="off">
           <button type="submit">Добавить</button>
         </form>
+        <button class="danger" id="reset-stats" type="button">Сбросить статистику</button>
       </div>
 
       <div class="section-head">
         <h2>Управление</h2>
-        <span class="muted">Привычки и напоминания</span>
+        <span class="muted">Привычки</span>
       </div>
       <div class="list" id="list">
         <div class="empty">Загрузка...</div>
@@ -599,6 +600,7 @@
     const list = document.querySelector("#list");
     const form = document.querySelector("#add-form");
     const input = document.querySelector("#habit-name");
+    const resetStats = document.querySelector("#reset-stats");
     const deleteModal = document.querySelector("#delete-modal");
     const deleteCopy = document.querySelector("#delete-copy");
     const deleteCancel = document.querySelector("#delete-cancel");
@@ -780,7 +782,7 @@
       document.querySelector("#month-percent").textContent = `${totalPercent}%`;
       document.querySelector("#month-fill").style.setProperty("--width", `${totalPercent}%`);
       document.querySelector("#month-copy").textContent = totalPlan
-        ? `30 дней: сделано ${totalDone} из ${totalPlan} в идеале`
+        ? `30 дней: сделано ${totalDone} из ${totalPlan}`
         : "Пока нет плана на месяц";
       document.querySelector("#week-total").textContent = `${weekDone}/${weekPlan} · ${weekPercent}%`;
       document.querySelector("#month-total").textContent = `${totalDone}/${totalPlan} · ${totalPercent}%`;
@@ -805,7 +807,7 @@
               <span class="month-row-percent">${percent}%</span>
             </div>
             <div class="rate-track"><div class="rate-fill" style="--width:${percent}%"></div></div>
-            <p class="muted">сделано ${done} из ${plan} в идеале · ${periodText} · серия ${habit.streak || 0}</p>
+            <p class="muted">сделано ${done} из ${plan} · ${periodText} · серия ${habit.streak || 0}</p>
           </article>
         `;
       }).join("");
@@ -866,6 +868,21 @@
       renderToday(state.data, state.stats);
       renderMonth(state.stats);
       renderManage(state.data);
+    });
+
+    resetStats.addEventListener("click", async () => {
+      const confirmed = confirm("Сбросить статистику всех привычек? Сами привычки останутся.");
+      if (!confirmed) return;
+      resetStats.disabled = true;
+      try {
+        state.data = await request("/api/habits/stats/reset");
+        state.stats = normalizeStats(await request("/api/stats"));
+        renderToday(state.data, state.stats);
+        renderMonth(state.stats);
+        renderManage(state.data);
+      } finally {
+        resetStats.disabled = false;
+      }
     });
 
     list.addEventListener("click", async (event) => {
