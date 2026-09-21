@@ -83,14 +83,6 @@ def today_keyboard(habits, missed_ids: set[int]) -> InlineKeyboardMarkup | None:
     return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
-def habit_status_icon(habit, missed_ids: set[int]) -> str:
-    if habit[5] == today_str():
-        return "✅"
-    if habit[0] in missed_ids:
-        return "⚪"
-    return "▫️"
-
-
 def format_habit_stats_block(title: str, stats: list[dict]) -> str:
     if not stats:
         return ""
@@ -113,12 +105,7 @@ async def build_habit_table_text(user_id: int) -> tuple[str, InlineKeyboardMarku
         return "📓 <b>Блокнот на сегодня</b>\n\nПока пусто. Добавь одну строку в Mini App.", None
 
     ordered = sorted(habits, key=lambda item: not is_primary_habit(item))
-    lines = ["📓 <b>Таблица привычек на сегодня</b>", ""]
-    for habit in ordered:
-        star = "★ " if is_primary_habit(habit) else ""
-        lines.append(f"{habit_status_icon(habit, missed_ids)} {star}<b>{habit_name(habit)}</b>")
-    lines.append("\n✅ сделано · ⚪ не сегодня · ▫️ ждёт")
-    return "\n".join(lines), today_keyboard(ordered, missed_ids)
+    return "📓 <b>Сегодня</b>", today_keyboard(ordered, missed_ids)
 
 
 async def answer_or_edit(obj: types.Message | types.CallbackQuery, text: str, reply_markup=None):
@@ -138,28 +125,10 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
         )
         return
 
-    today = today_str()
     missed_ids = set(await get_missed_habit_ids(user_id))
     ordered = sorted(habits, key=lambda item: not is_primary_habit(item))
-    primary = next((habit for habit in ordered if is_primary_habit(habit)), None)
-    pending = [habit for habit in ordered if habit[5] != today and habit[0] not in missed_ids]
-    completed = [habit for habit in ordered if habit[5] == today]
 
-    text = "📓 <b>Мой блокнот на сегодня</b>"
-    if primary:
-        text += f"\n\nГлавная строка дня: <b>{habit_name(primary)}</b> · {escape(primary_time(primary))}"
-
-    if pending:
-        text += "\n\n<b>Ещё ждёт:</b>"
-        text += "".join(f"\n• <b>{habit_name(habit)}</b>" for habit in pending)
-    else:
-        text += "\n\nНа сегодня всё закрыто. Достаточно."
-
-    if completed:
-        text += "\n\n<b>Уже сделал:</b>"
-        text += "".join(f"\n• <b>{habit_name(habit)}</b>" for habit in completed)
-
-    await answer_or_edit(obj, text, today_keyboard(habits, missed_ids))
+    await answer_or_edit(obj, "📓 <b>Сегодня</b>", today_keyboard(ordered, missed_ids))
 
 
 async def send_sleep_statistics(message: types.Message) -> None:
