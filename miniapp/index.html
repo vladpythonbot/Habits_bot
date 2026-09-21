@@ -239,6 +239,27 @@
       gap: 12px;
     }
 
+    .today-habit.fog {
+      opacity: .58;
+      box-shadow: none;
+      background: var(--surface-soft);
+    }
+
+    .fog-section {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed var(--line);
+    }
+
+    .fog-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
     .mark-actions {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -810,7 +831,26 @@
 
       const stats7Map = byId(stats.habit_stats_7);
       const stats30Map = byId(stats.habit_stats_30);
-      todayList.innerHTML = habits.map((habit) => {
+      const activeHabits = habits.filter((habit) => !habit.done_today && !habit.missed_today);
+      const fogHabits = habits.filter((habit) => habit.done_today || habit.missed_today);
+      const activeHtml = activeHabits.length
+        ? activeHabits.map((habit) => renderTodayHabit(habit, stats7Map, stats30Map, false)).join("")
+        : '<div class="empty">Открытых строк нет. День можно закрывать.</div>';
+      const fogHtml = fogHabits.length
+        ? `
+          <div class="fog-section">
+            <div class="fog-title">
+              <h2>Туман войны</h2>
+              <span class="muted">${fogHabits.length} закрыто</span>
+            </div>
+            ${fogHabits.map((habit) => renderTodayHabit(habit, stats7Map, stats30Map, true)).join("")}
+          </div>
+        `
+        : "";
+      todayList.innerHTML = activeHtml + fogHtml;
+    }
+
+    function renderTodayHabit(habit, stats7Map, stats30Map, fog) {
         const row7 = stats7Map.get(Number(habit.id));
         const row30 = stats30Map.get(Number(habit.id));
         const rate = row7?.completion_rate || 0;
@@ -824,7 +864,7 @@
               <button class="ghost" data-action="miss" data-id="${habit.id}">Не сегодня</button>
             `;
         return `
-          <article class="today-habit panel" data-id="${habit.id}">
+          <article class="today-habit panel ${fog ? "fog" : ""}" data-id="${habit.id}">
             <div class="habit-progress-head">
               <div class="habit-progress-title">
                 <strong>${escapeHtml(habit.name)}</strong>
@@ -836,7 +876,6 @@
             <div class="mark-actions">${actions}</div>
           </article>
         `;
-      }).join("");
     }
 
     function renderMonth(stats) {
