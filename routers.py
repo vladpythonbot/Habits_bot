@@ -39,7 +39,7 @@ HABIT_TABLE_TIME = os.getenv("HABIT_TABLE_TIME", "21:00")
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Сегодня")],
-        [KeyboardButton(text="Статистика")],
+        [KeyboardButton(text="Статистика"), KeyboardButton(text="Сон")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
@@ -54,6 +54,29 @@ def mini_app_keyboard() -> InlineKeyboardMarkup | None:
         text="Открыть блокнот",
         web_app=WebAppInfo(url=MINI_APP_URL),
     )]])
+
+
+def sleep_poll_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="1", callback_data="sleep_rate_1"),
+            InlineKeyboardButton(text="2", callback_data="sleep_rate_2"),
+            InlineKeyboardButton(text="3", callback_data="sleep_rate_3"),
+            InlineKeyboardButton(text="4", callback_data="sleep_rate_4"),
+            InlineKeyboardButton(text="5", callback_data="sleep_rate_5"),
+        ]
+    ])
+
+
+def sleep_rate_label(rate: int) -> str:
+    labels = {
+        1: "очень плохо",
+        2: "плохо",
+        3: "нормально",
+        4: "хорошо",
+        5: "отлично",
+    }
+    return labels.get(rate, "записано")
 
 
 def habit_name(habit) -> str:
@@ -148,6 +171,14 @@ async def send_sleep_statistics(message: types.Message) -> None:
     )
 
 
+async def ask_sleep_poll(message: types.Message) -> None:
+    await message.answer(
+        "<b>Сон сегодня</b>\n\nОцени качество сна от 1 до 5.",
+        parse_mode="HTML",
+        reply_markup=sleep_poll_keyboard(),
+    )
+
+
 async def send_daily_habit_table():
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
     current_time = now.strftime("%H:%M")
@@ -211,6 +242,13 @@ async def statistics(message: types.Message, state: FSMContext):
     await send_sleep_statistics(message)
 
 
+@router.message(Command("sleep"))
+@router.message(F.text == "Сон")
+async def sleep_poll(message: types.Message, state: FSMContext):
+    await state.clear()
+    await ask_sleep_poll(message)
+
+
 @router.message(Command("today"))
 @router.message(F.text.in_(["Сегодня", "Блокнот на сегодня", "🟢 Сегодня"]))
 async def today(message: types.Message, state: FSMContext):
@@ -271,5 +309,8 @@ async def sleep_rate(callback: types.CallbackQuery):
     if not saved:
         await callback.answer("Оценка должна быть от 1 до 5", show_alert=True)
         return
-    await callback.message.edit_text(f"Сон записал: {rate}/5.")
+    await callback.message.edit_text(
+        f"<b>Сон записан</b>\n\n{rate}/5 · {sleep_rate_label(rate)}",
+        parse_mode="HTML",
+    )
     await callback.answer("Записал сон")
