@@ -674,6 +674,7 @@
           completion_rate: percent,
           possible: targetDays,
           period_completed: factDays,
+          active_days: Number(habit.active_days ?? daysFromPlan(targetDays)),
           missed_count: Number(habit.missed_count ?? habit.missed_days ?? 0),
           last_7_completed: Number(habit.last_7_completed ?? factDays),
           last_7_possible: Number(habit.last_7_possible ?? targetDays),
@@ -712,6 +713,10 @@
         focus_habit: focusHabit,
         average_streak: stats?.average_streak ?? Math.round(habitRows.reduce((sum, habit) => sum + Number(habit.streak || 0), 0) / Math.max(1, habitRows.length)),
       };
+    }
+
+    function daysFromPlan(plan) {
+      return Math.max(0, Number(plan || 0));
     }
 
     async function refreshAll() {
@@ -775,10 +780,10 @@
       document.querySelector("#month-percent").textContent = `${totalPercent}%`;
       document.querySelector("#month-fill").style.setProperty("--width", `${totalPercent}%`);
       document.querySelector("#month-copy").textContent = totalPlan
-        ? `${totalDone}/${totalPlan} выполнено по плану`
+        ? `30 дней: сделано ${totalDone} из ${totalPlan} в идеале`
         : "Пока нет плана на месяц";
-      document.querySelector("#week-total").textContent = `${weekPercent}%`;
-      document.querySelector("#month-total").textContent = `${totalPercent}%`;
+      document.querySelector("#week-total").textContent = `${weekDone}/${weekPlan} · ${weekPercent}%`;
+      document.querySelector("#month-total").textContent = `${totalDone}/${totalPlan} · ${totalPercent}%`;
 
       weekList.innerHTML = renderPeriodRows(weekRows, 7, weekDone, weekPlan);
       monthList.innerHTML = renderPeriodRows(monthRows, 30, totalDone, totalPlan);
@@ -791,6 +796,8 @@
         const percent = Math.max(0, Math.min(100, Number(habit.completion_rate || 0)));
         const done = Number(habit.period_completed || 0);
         const plan = Number(habit.possible || 0);
+        const activeDays = Number(habit.active_days || days);
+        const periodText = activeDays === days ? `${days} дней` : `период ${activeDays} дней`;
         return `
           <article class="panel month-row">
             <div class="month-row-top">
@@ -798,7 +805,7 @@
               <span class="month-row-percent">${percent}%</span>
             </div>
             <div class="rate-track"><div class="rate-fill" style="--width:${percent}%"></div></div>
-            <p class="muted">${done}/${plan} за ${days} дней · серия ${habit.streak || 0}</p>
+            <p class="muted">сделано ${done} из ${plan} в идеале · ${periodText} · серия ${habit.streak || 0}</p>
           </article>
         `;
       }).join("");

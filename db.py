@@ -840,6 +840,7 @@ async def get_user_habit_stats(user_id: int, days: int = 30) -> list[dict]:
             "name": name,
             "streak": streak,
             "total_completed": total_completed,
+            "active_days": len(active_dates),
             "target_days": target_days,
             "fact_days": fact_days,
             "missed_days": missed_days,
