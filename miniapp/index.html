@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>HabitFlow</title>
+  <title>Блокнот привычек</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f6f7fb;
+      --bg: #f4f6f8;
       --surface: #ffffff;
-      --surface-soft: #eef1f6;
-      --text: #202331;
+      --surface-soft: #eef3f0;
+      --text: #17201c;
       --muted: #667084;
-      --line: #dde3ed;
-      --ink: #202331;
+      --line: #dbe5df;
+      --ink: #17201c;
       --mint: #147d64;
       --mint-soft: #e4f3ed;
       --sky: #4059ad;
@@ -24,7 +24,7 @@
       --sun: #9b6a1d;
       --sun-soft: #fbefd8;
       --danger: #bf3b4a;
-      --shadow: 0 12px 28px rgba(28, 38, 64, .08);
+      --shadow: 0 12px 26px rgba(23, 32, 28, .07);
     }
 
     * { box-sizing: border-box; }
@@ -32,7 +32,9 @@
     body {
       margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: var(--bg);
+      background:
+        linear-gradient(180deg, rgba(20, 125, 100, .08), transparent 240px),
+        var(--bg);
       color: var(--text);
     }
 
@@ -52,7 +54,10 @@
       gap: 12px;
     }
 
-    header { margin-bottom: 12px; }
+    header {
+      margin-bottom: 12px;
+      padding: 2px 2px 0;
+    }
 
     h1,
     h2,
@@ -63,7 +68,7 @@
     }
 
     h1 {
-      font-size: 27px;
+      font-size: 25px;
       line-height: 1.08;
     }
 
@@ -92,7 +97,7 @@
       min-height: 28px;
       border-radius: 999px;
       padding: 5px 10px;
-      background: var(--surface);
+      background: rgba(255, 255, 255, .72);
       border: 1px solid var(--line);
       color: var(--muted);
       font-size: 12px;
@@ -109,6 +114,7 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       background: var(--surface);
+      box-shadow: var(--shadow);
     }
 
     button {
@@ -146,6 +152,11 @@
       color: white;
     }
 
+    button:disabled {
+      opacity: .58;
+      cursor: default;
+    }
+
     .panel,
     .habit-card {
       background: var(--surface);
@@ -165,7 +176,9 @@
       gap: 16px;
       align-items: center;
       min-height: 170px;
-      background: var(--mint-soft);
+      background:
+        linear-gradient(135deg, rgba(20, 125, 100, .14), rgba(64, 89, 173, .08)),
+        var(--surface);
       border-color: #c8eadb;
     }
 
@@ -228,13 +241,17 @@
 
     .mark-actions {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
     }
 
     .mark-actions button {
       min-height: 38px;
       padding: 0 8px;
+    }
+
+    .mark-actions .wide {
+      grid-column: 1 / -1;
     }
 
     .habit-stat-card {
@@ -273,13 +290,16 @@
       height: 100%;
       width: var(--width);
       border-radius: inherit;
-      background: var(--mint);
+      background: linear-gradient(90deg, var(--mint), #39a78d);
     }
 
     .month-summary {
       display: grid;
       gap: 10px;
       margin-bottom: 12px;
+      background:
+        linear-gradient(135deg, rgba(20, 125, 100, .12), rgba(155, 106, 29, .08)),
+        var(--surface);
     }
 
     .month-total {
@@ -329,6 +349,26 @@
     .form-panel {
       display: grid;
       gap: 10px;
+    }
+
+    .premium-note {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .metric {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .metric b {
+      display: block;
+      font-size: 18px;
+      line-height: 1.1;
+      color: var(--mint);
     }
 
     form,
@@ -453,6 +493,7 @@
       .today-card { grid-template-columns: 96px 1fr; }
       .ring { width: 92px; }
       .mark-actions { grid-template-columns: 1fr; }
+      .premium-note { grid-template-columns: 1fr; }
       .status { white-space: normal; text-align: right; }
     }
 
@@ -464,12 +505,12 @@
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #11151f;
-        --surface: #181f2a;
-        --surface-soft: #222b39;
+        --bg: #10161b;
+        --surface: #17211f;
+        --surface-soft: #1f2b29;
         --text: #f5f3ee;
         --muted: #b3aca3;
-        --line: #30394a;
+        --line: #2d3b38;
         --ink: #f5f3ee;
         --mint-soft: #14382e;
         --sky-soft: #172b55;
@@ -482,7 +523,11 @@
       .ring::after { background: var(--surface); }
       .rate-track,
       .week-dot { background: #344053; }
-      button.active { color: #11151f; }
+      .pill,
+      .chip,
+      .delta,
+      .status { background: rgba(23, 33, 31, .72); }
+      button.active { color: #10161b; }
     }
   </style>
 </head>
@@ -490,10 +535,10 @@
   <main>
     <header>
       <div>
-        <h1>HabitFlow</h1>
+        <h1>Блокнот привычек</h1>
         <div class="date" id="today">Сегодня</div>
       </div>
-      <span class="pill">Today</span>
+      <span class="pill">Личный режим</span>
     </header>
 
     <nav class="tabs">
@@ -532,6 +577,11 @@
           <b id="month-percent">0%</b>
         </div>
         <div class="rate-track"><div class="rate-fill" id="month-fill" style="--width:0%"></div></div>
+        <div class="premium-note">
+          <div class="metric"><b id="week-made">0/0</b><span class="muted">7 дней</span></div>
+          <div class="metric"><b id="month-made">0/0</b><span class="muted">30 дней</span></div>
+          <div class="metric"><b id="habit-count">0</b><span class="muted">привычек</span></div>
+        </div>
       </div>
 
       <div class="section-head">
@@ -549,17 +599,17 @@
 
     <section id="manage-view" class="hidden">
       <div class="panel form-panel">
-        <h2>Добавить привычку</h2>
+        <h2>Привычки</h2>
         <form class="add-row" id="add-form">
-          <input id="habit-name" maxlength="80" placeholder="Например: выпить воду" autocomplete="off">
+          <input id="habit-name" maxlength="80" placeholder="Новая строка в блокноте" autocomplete="off">
           <button type="submit">Добавить</button>
         </form>
         <button class="danger" id="reset-stats" type="button">Сбросить статистику</button>
       </div>
 
       <div class="section-head">
-        <h2>Управление</h2>
-        <span class="muted">Привычки</span>
+        <h2>Список</h2>
+        <span class="muted">Редактирование</span>
       </div>
       <div class="list" id="list">
         <div class="empty">Загрузка...</div>
@@ -737,6 +787,20 @@
     function renderToday(data, stats) {
       const habits = data.habits || [];
       const open = habits.filter((habit) => !habit.done_today && !habit.missed_today).length;
+      const done = Number(stats.today_done || 0);
+      const possible = Number(stats.today_possible || habits.length || 0);
+      const todayRate = Math.max(0, Math.min(100, Number(stats.today_rate || 0)));
+      const weekRate = Math.max(0, Math.min(100, Number(stats.week_rate || 0)));
+      document.querySelector("#rate").textContent = `${todayRate}%`;
+      document.querySelector("#ring").style.setProperty("--value", `${todayRate * 3.6}deg`);
+      document.querySelector("#today-score").textContent = `${done}/${possible} сегодня`;
+      document.querySelector("#week-score").textContent = `${weekRate}% за 7 дней`;
+      document.querySelector("#summary-title").textContent = todayRate >= 100
+        ? "День закрыт"
+        : (done ? "Ритм держится" : "Начни с одной строки");
+      document.querySelector("#summary-copy").textContent = todayRate >= 100
+        ? "На сегодня достаточно."
+        : "Отметь готовое или спокойно перенеси лишнее.";
       document.querySelector("#today-left").textContent = `${open} осталось`;
 
       if (!habits.length) {
@@ -753,6 +817,12 @@
         const monthRate = row30?.completion_rate || 0;
         const status = habit.done_today ? "done" : "open";
         const statusText = habit.done_today ? "готово" : (habit.missed_today ? "не сегодня" : "ждёт отметки");
+        const actions = habit.done_today || habit.missed_today
+          ? `<button class="ghost wide" data-action="clear" data-id="${habit.id}">Очистить сегодня</button>`
+          : `
+              <button data-action="mark" data-id="${habit.id}">Готово</button>
+              <button class="ghost" data-action="miss" data-id="${habit.id}">Не сегодня</button>
+            `;
         return `
           <article class="today-habit panel" data-id="${habit.id}">
             <div class="habit-progress-head">
@@ -763,6 +833,7 @@
               <span class="status ${status}">${statusText}</span>
             </div>
             <div class="rate-track"><div class="rate-fill" style="--width:${rate}%"></div></div>
+            <div class="mark-actions">${actions}</div>
           </article>
         `;
       }).join("");
@@ -786,6 +857,9 @@
         : "Пока нет плана на месяц";
       document.querySelector("#week-total").textContent = `${weekDone}/${weekPlan} · ${weekPercent}%`;
       document.querySelector("#month-total").textContent = `${totalDone}/${totalPlan} · ${totalPercent}%`;
+      document.querySelector("#week-made").textContent = `${weekDone}/${weekPlan}`;
+      document.querySelector("#month-made").textContent = `${totalDone}/${totalPlan}`;
+      document.querySelector("#habit-count").textContent = `${rows.length}`;
 
       weekList.innerHTML = renderPeriodRows(weekRows, 7, weekDone, weekPlan);
       monthList.innerHTML = renderPeriodRows(monthRows, 30, totalDone, totalPlan);
@@ -849,6 +923,7 @@
         document.querySelector("#week-score").textContent = "—";
         document.querySelector("#today-left").textContent = "ошибка входа";
         todayList.innerHTML = `<div class="error">${details}</div>`;
+        weekList.innerHTML = `<div class="error">${details}</div>`;
         monthList.innerHTML = `<div class="error">${details}</div>`;
         list.innerHTML = `<div class="error">${details}</div>`;
       }
@@ -940,7 +1015,7 @@
       const target = event.target.closest("[data-action]");
       if (!target || !todayList.contains(target)) return;
       const { action, id } = target.dataset;
-if (action === "mark") {
+      if (action === "mark") {
         await request(`/api/habits/${id}/mark`);
       }
 
@@ -950,6 +1025,10 @@ if (action === "mark") {
 
       if (action === "undo") {
         await request(`/api/habits/${id}/undo`);
+      }
+
+      if (action === "clear") {
+        await request(`/api/habits/${id}/clear`);
       }
 
       await refreshAll();

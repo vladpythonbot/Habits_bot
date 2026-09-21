@@ -38,8 +38,8 @@ HABIT_TABLE_TIME = os.getenv("HABIT_TABLE_TIME", "21:00")
 
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="Блокнот на сегодня")],
-        [KeyboardButton(text="📊 Статистика")],
+        [KeyboardButton(text="Сегодня")],
+        [KeyboardButton(text="Статистика")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
@@ -51,7 +51,7 @@ def mini_app_keyboard() -> InlineKeyboardMarkup | None:
     if not MINI_APP_URL:
         return None
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-        text="Открыть Mini App",
+        text="Открыть блокнот",
         web_app=WebAppInfo(url=MINI_APP_URL),
     )]])
 
@@ -121,7 +121,7 @@ async def show_today(obj: types.Message | types.CallbackQuery, user_id: int):
     if not habits:
         await answer_or_edit(
             obj,
-            "📓 <b>Мой блокнот</b>\n\nПока пусто. Добавь одну привычку в Mini App — без героизма, просто чтобы день имел опору.",
+            "📓 <b>Блокнот пуст</b>\n\nДобавь первую привычку в Mini App.",
         )
         return
 
@@ -171,7 +171,7 @@ async def send_daily_habit_table():
 async def start(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "Открыл блокнот. Всё управление — в Mini App, здесь только самое нужное.",
+        "Блокнот готов. В чате — быстрые отметки, в Mini App — управление и статистика.",
         reply_markup=main_keyboard,
     )
     await show_today(message, message.from_user.id)
@@ -182,13 +182,13 @@ async def start(message: types.Message, state: FSMContext):
 async def open_mini_app(message: types.Message, state: FSMContext):
     await state.clear()
     if MINI_APP_URL:
-        await message.answer("Открываю твой блокнот.", reply_markup=mini_app_keyboard())
+        await message.answer("Открываю блокнот.", reply_markup=mini_app_keyboard())
         return
     await message.answer("Mini App пока не настроен.", reply_markup=main_keyboard)
 
 
 @router.message(Command("stats"))
-@router.message(F.text == "📊 Статистика")
+@router.message(F.text.in_(["Статистика", "📊 Статистика"]))
 async def statistics(message: types.Message, state: FSMContext):
     await state.clear()
     habits = await get_user_habits(message.from_user.id)
@@ -198,9 +198,9 @@ async def statistics(message: types.Message, state: FSMContext):
     primary = next((habit for habit in habits if is_primary_habit(habit)), None)
 
     text = (
-        f"В блокноте привычек: {len(habits)}\n"
-        f"Сегодня уже сделано: {done}\n"
-        f"Ещё ждёт: {open_count}"
+        f"<b>Статистика</b>\n"
+        f"Привычек: {len(habits)}\n"
+        f"Сегодня: {done} сделано · {open_count} ждёт"
     )
     if primary:
         text += f"\nГлавная строка: {habit_name(primary)} · {escape(primary_time(primary))}"
